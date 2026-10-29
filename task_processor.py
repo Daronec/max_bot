@@ -6,7 +6,8 @@ from zoneinfo import ZoneInfo
 import requests
 from lm_connection import (model_get, model_post, ModelServerUnavailable, model_session,
                            intent_session, current_backend)
-from intent_router import intent_router
+from intent_router import intent_router, RouteDecision
+from personal_memory import current_memory_turn
 from assistant_identity import IDENTITY_PROMPT, strip_assistant_address, ADDRESS_REPLY
 
 from config import LM_API_KEY, LM_BASE_URL, LM_MODEL, LM_SYSTEM_PROMPT, LM_TIMEOUT, LM_MAX_TOKENS
@@ -217,7 +218,9 @@ def process_message(text, allow_files=False, allow_commands=False):
     text = strip_assistant_address(text)
     if not text:
         return ADDRESS_REPLY
-    decision = intent_router.route(text)
+    memory = current_memory_turn()
+    decision = (RouteDecision('qwen', None, None, 'personal_memory_local')
+                if memory.force_local else intent_router.route(text))
     with intent_session(decision):
         return _process_message(text, allow_files=allow_files, allow_commands=allow_commands)
 
@@ -232,6 +235,8 @@ def _process_message(text, allow_files=False, allow_commands=False):
         headers['Authorization'] = f'Bearer {api_key}'
     try:
         system_prompt = LM_SYSTEM_PROMPT + '\n' + IDENTITY_PROMPT + '\nТекущая дата: ' + datetime.now(ZoneInfo('Europe/Moscow')).date().isoformat()
+        if current_memory_turn().context:
+            system_prompt += '\n' + current_memory_turn().context
         if not WEB_ENABLED:
             system_prompt += '\nВеб-инструменты выключены в настройках. Не утверждай, что использовал интернет.'
         if allow_files:
@@ -302,7 +307,10 @@ def comment_on_mood(text):
     text = strip_assistant_address(text)
     if not text:
         return ADDRESS_REPLY
-    with intent_session(intent_router.route(text)):
+    memory = current_memory_turn()
+    decision = (RouteDecision('qwen', None, None, 'personal_memory_local')
+                if memory.force_local else intent_router.route(text))
+    with intent_session(decision):
         return _comment_on_mood(text)
 
 
@@ -320,7 +328,7 @@ def _comment_on_mood(text):
             response.raise_for_status()
             model=next(item['id'] for item in response.json()['data'] if 'embed' not in item['id'].lower() and 'voxtral' not in item['id'].lower())
         payload={'model':model,'stream':False,'max_tokens':500,'messages':[
-            {'role':'system','content':IDENTITY_PROMPT + '\n' + 'Ты дружелюбный собеседник в MAX. Ты спросил: «Как у тебя настроение?». '
+            {'role':'system','content':IDENTITY_PROMPT + '\n' + current_memory_turn().context + '\n' + 'Ты дружелюбный собеседник в MAX. Ты спросил: «Как у тебя настроение?». '
              'Пользователь отвечает о своём состоянии. Прокомментируй ответ по-русски в 2–4 предложениях: '
              'учти конкретные слова и тон, поддержи без шаблонных похвал, обесценивания и диагнозов. '
              'Можно предложить один небольшой необязательный шаг или задать один мягкий вопрос. '

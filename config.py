@@ -107,3 +107,10 @@ if not 0 <= DEEPSEEK_COOLDOWN_SECONDS < float('inf'):
 ASSISTANT_NAME = os.environ.get('ASSISTANT_NAME', 'Агафья').strip() or 'Агафья'
 ASSISTANT_NAME_ALIASES = tuple(value.strip() for value in os.environ.get(
     'ASSISTANT_NAME_ALIASES', 'Агафия' if ASSISTANT_NAME == 'Агафья' else '').split(',') if value.strip())
+
+# Personal knowledge stays in a local per-user database, never in the repository.
+MEMORY_ENABLED = os.environ.get('MEMORY_ENABLED', 'true').lower() not in ('0', 'false', 'no', 'off')
+MEMORY_ALLOWED_CHAT_IDS = frozenset(value.strip() for value in os.environ.get(
+    'MEMORY_ALLOWED_CHAT_IDS', ','.join(FS_ALLOWED_CHAT_IDS)).split(',') if value.strip())
+MEMORY_DB_PATH = Path(os.environ.get('MEMORY_DB_PATH', str(BASE_DIR / 'memory' / 'personal.sqlite3'))).expanduser()
+MEMORY_TIMEOUT = float(os.environ.get('MEMORY_TIMEOUT', '20'))

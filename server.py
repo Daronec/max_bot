@@ -36,6 +36,7 @@ from command_tools import capture_command_actions
 from notification_forwarder import NotificationForwarder
 from voice_tools import audio_attachment, transcribe, VoiceError
 from assistant_identity import strip_assistant_address, ADDRESS_REPLY
+from personal_memory import personal_memory, current_memory_turn
 from config import VOICE_ENABLED, LM_PROVIDER, LM_MODEL
 from morning_summary import MorningSummary, build_summary
 
@@ -146,6 +147,7 @@ def status():
     return jsonify(status='ok', bot_id=BOT_ID, monitoring_active=monitoring_active,
                    monitoring_error=monitoring_error, chat_configured=CHAT_ID is not None,
                    worker_active=worker_active, worker_error=worker_error,
+                   personal_memory_enabled=personal_memory.enabled, personal_memory_allowed_chats=len(personal_memory.allowed_chats),
                    model_routing=routing_status(), model_provider=LM_PROVIDER, model_name=LM_MODEL, mood_checkin=mood_checkin.status(), morning_summary=morning_summary.status(), voice_diagnostics=dict(voice_diagnostics), voice_enabled=VOICE_ENABLED, notifications=notification_forwarder.status(),
                    web_enabled=WEB_ENABLED, file_tools_enabled=FS_ENABLED,
                    file_tools_authorized_chats=len(FS_ALLOWED_CHAT_IDS), commands_enabled=COMMANDS_ENABLED)
@@ -308,6 +310,12 @@ def handle_update(update):
         if tid not in active_tasks:
             task = dict(task_id=tid, message=text, chat_id=chat, bot_message_id=mid, source='max',
                         status='queued', timestamp=now(), result=None)
+            if (message.get('link') or {}).get('type') in {'forward', 'forwarded'} or message.get('forwarded_from'):
+                task['memory_excluded'] = True
+            sender = message.get('sender') or {}
+            sender_id = sender.get('user_id') or sender.get('id')
+            if sender_id is not None:
+                task['sender_id'] = str(sender_id)
             if mood_question:
                 task['mood_question_id'] = mood_question
             if audio is not None:
@@ -334,6 +342,17 @@ def execute_task_message(text, **permissions):
     if permissions and re.search(r'^/summary$|(?:пришли|покажи|составь|дай).*сводк|утренн[яю][яю] сводк', text, re.I):
         return build_summary(bot_client)
     return process_message(text, **permissions)
+
+
+def execute_with_memory(task, text, execute, permissions):
+    # Memory only consumes original MAX messages/ASR, never tool output or HTTP tasks.
+    sender_id = task.get('sender_id') if task.get('source') == 'max' and not task.get('memory_excluded') else None
+    with personal_memory.turn(text, task['chat_id'], sender_id, task['task_id']) as direct:
+        if direct is not None:
+            return direct
+        answer = execute(text, **permissions)
+        notice = current_memory_turn().notice
+        return answer + ('\n\n' + notice if notice else '')
 
 
 def process_next_task():
@@ -390,10 +409,10 @@ def process_next_task():
                         # Drop expiring signed media URLs once speech has been persisted.
                         task.pop('audio', None)
                         persist(task)
-                    answer = execute(transcript, **permissions)
+                    answer = execute_with_memory(task, transcript, execute, permissions)
 
             else:
-                answer = execute(task['message'], **permissions)
+                answer = execute_with_memory(task, task['message'], execute, permissions)
             if task.get('transcription'):
                 answer = 'Распознано: ' + task['transcription'] + '\n\n' + answer
     except ProcessingError as error:

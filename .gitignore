@@ -89,3 +89,9 @@ Thumbs.db
 
 # Local credentials and private configuration
 /.env
+
+# Private personal memory and SQLite auxiliary files
+/memory/
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
