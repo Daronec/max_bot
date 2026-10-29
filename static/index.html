@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MAX — задачи</title>
+<style>
+body {font:16px system-ui;margin:40px auto;padding:0 20px;max-width:760px;background:#f5f5f5}
+input,textarea,button {font:inherit;padding:10px;box-sizing:border-box}
+label {display:block;margin:16px 0} input,textarea {display:block;width:100%;margin-top:6px}
+button {margin:4px 8px 4px 0;cursor:pointer} pre {white-space:pre-wrap;overflow-wrap:anywhere;background:white;padding:20px}
+</style>
+<h1>🤖 MAX — задачи</h1>
+<p id="status">Проверяем состояние сервера…</p>
+<form id="taskForm">
+<label>ID задачи (пустое поле — создать автоматически)<input id="taskId" pattern="[A-Za-z0-9_-]{1,100}"></label>
+<label>Числовой ID чата (можно задать через MAX_CHAT_ID)<input id="chatId" inputmode="numeric"></label>
+<label>Текст задачи<textarea id="message" required rows="5"></textarea></label>
+<button id="sendBtn" type="submit">📨 Отправить задачу</button>
+</form>
+<button id="resultBtn">🤖 Получить результат</button><button id="copyBtn">📋 Копировать</button>
+<p id="notice" role="status"></p><pre id="result"></pre>
+<script>
+let pollTimer;
+const el = id => document.getElementById(id);
+async function api(url, options) {
+    const response = await fetch(url, options);
+    const data = await response.json();
+    if (!response.ok || data.success === false) throw new Error(data.error || 'Ошибка запроса');
+    return data;
+}
+async function getResult() {
+    clearTimeout(pollTimer);
+    const taskId = el('taskId').value.trim();
+    if (!taskId) throw new Error('Укажите ID задачи');
+    const data = await api('/api/result?task_id=' + encodeURIComponent(taskId));
+    el('result').textContent = data.result ?? 'Задача ожидает обработки';
+    el('notice').textContent = 'Статус: ' + data.status;
+    if (['queued', 'processing'].includes(data.status)) pollTimer = setTimeout(() => getResult().catch(showError), 5000);
+}
+function showError(error) { el('notice').textContent = error.message; }
+el('taskForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    clearTimeout(pollTimer);
+    el('sendBtn').disabled = true;
+    try {
+        const payload = {message: el('message').value};
+        if (el('taskId').value.trim()) payload.task_id = el('taskId').value.trim();
+        if (el('chatId').value.trim()) payload.chat_id = el('chatId').value.trim();
+        const data = await api('/api/task', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+        el('taskId').value = data.task_id;
+        el('result').textContent = '';
+        el('notice').textContent = 'Задача отправлена. Локальная модель обработает её и вернёт ответ в MAX.';
+        pollTimer = setTimeout(() => getResult().catch(showError), 5000);
+    } catch (error) { showError(error); }
+    finally { el('sendBtn').disabled = false; }
+});
+el('resultBtn').onclick = () => getResult().catch(showError);
+el('copyBtn').onclick = async () => {
+    try {
+        await navigator.clipboard.writeText(el('result').textContent);
+        el('notice').textContent = 'Скопировано';
+    } catch (error) { showError(new Error('Не удалось скопировать. Выделите текст вручную.')); }
+};
+api('/api/status').then(data => {
+    el('status').textContent = data.monitoring_active ? 'Мониторинг включён' : 'Мониторинг выключен';
+    el('status').textContent += data.worker_active ? '. Обработчик модели включён' : '. Обработчик модели выключен';
+    el('status').textContent += data.web_enabled ? '. Веб-поиск и чтение сайтов включены' : '. Веб-доступ выключен';
+    el('status').textContent += data.file_tools_enabled && data.file_tools_authorized_chats ? '. Файловые инструменты доступны разрешённым чатам' : '. Файловые инструменты выключены';
+    el('status').textContent += data.commands_enabled ? '. Консоль доступна разрешённым чатам' : '. Консоль выключена';
+    if (data.monitoring_error) el('status').textContent += ': ' + data.monitoring_error;
+    if (data.worker_error) el('status').textContent += ': ' + data.worker_error;
+}).catch(showError);
+</script>
+</html>
