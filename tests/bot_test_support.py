@@ -14,4 +14,7 @@ os.environ.update({
     'MOOD_CHAT_ID': '123456789',
     'MEMORY_ENABLED': 'true',
     'MEMORY_ALLOWED_CHAT_IDS': '123456789',
+    'CODE_CHANGES_ENABLED': 'true',
+    'CODE_ALLOWED_CHAT_IDS': '123456789',
+    'CODE_ALLOWED_SENDER_IDS': 'unit-test-sender',
 })

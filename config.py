@@ -117,3 +117,12 @@ MEMORY_TIMEOUT = float(os.environ.get('MEMORY_TIMEOUT', '20'))
 
 MEMORY_AGENT_ENABLED = os.environ.get('MEMORY_AGENT_ENABLED', 'true').lower() not in ('0', 'false', 'no', 'off')
 MEMORY_AGENT_MAX_ROUNDS = max(2, min(12, int(os.environ.get('MEMORY_AGENT_MAX_ROUNDS', '8'))))
+
+# Changes to the bot's own sources: local drafts, tests, explicit apply, health rollback.
+CODE_CHANGES_ENABLED = os.environ.get('CODE_CHANGES_ENABLED', 'true').lower() not in ('0', 'false', 'no', 'off')
+CODE_ALLOWED_CHAT_IDS = frozenset(value.strip() for value in os.environ.get(
+    'CODE_ALLOWED_CHAT_IDS', ','.join(FS_ALLOWED_CHAT_IDS)).split(',') if value.strip())
+CODE_ALLOWED_SENDER_IDS = frozenset(value.strip() for value in os.environ.get(
+    'CODE_ALLOWED_SENDER_IDS', '').split(',') if value.strip())
+CODE_TEST_TIMEOUT = max(10, min(600, int(os.environ.get('CODE_TEST_TIMEOUT', '180'))))
+CODE_MAX_ROUNDS = max(4, min(48, int(os.environ.get('CODE_MAX_ROUNDS', '24'))))

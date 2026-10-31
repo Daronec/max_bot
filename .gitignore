@@ -95,3 +95,6 @@ Thumbs.db
 *.sqlite3-wal
 *.sqlite3-shm
 *.sqlite3-journal
+
+# Private source drafts, test logs and deployment recovery copies
+/.code_changes/

@@ -31,6 +31,7 @@ def openai_completion(headers, model, text, system_prompt, allow_files=False, al
     import file_tools
     import command_tools
     import app_tools
+    from tool_protocol import tool_calls, MARKUP
     messages = [{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': text}]
     command_intent = allow_commands and bool(re.search(r'run_command|\bзапусти\b|\bвыполни\b|\bсобери\b|\bпрогони\b|\bвыполнить команд|\brun\s+(?:the\s+)?(?:command|tests)|\bexecute\b', text, re.I))
     if re.search(r'\bкак\s+(?:запуст|выполн|собра)|\bhow\s+to\b|объясни|что значит', text, re.I):
@@ -119,9 +120,11 @@ def openai_completion(headers, model, text, system_prompt, allow_files=False, al
                                  json=payload, timeout=(10, LM_TIMEOUT))
         response.raise_for_status()
         message = response.json()['choices'][0]['message']
-        calls = message.get('tool_calls') or []
+        calls = tool_calls(message, tools)
+        if calls:
+            message = {'role':'assistant','content':None,'tool_calls':calls}
         if not calls:
-            if tools and payload.get('tool_choice') == 'required':
+            if tools and (payload.get('tool_choice') == 'required' or MARKUP.search(message.get('content') or '')):
                 missing_tool_attempts += 1
                 if missing_tool_attempts > 2:
                     raise ProcessingError('Модель не выполнила обязательный вызов инструмента. Повторю попытку позже.')

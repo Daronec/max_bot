@@ -18,12 +18,14 @@ _actions = ContextVar('file_actions', default=None)
 _action_observer = ContextVar('file_action_observer', default=None)
 BACKUP_DIR = BASE_DIR / '.bot_file_backups'
 PROTECTED_PATHS = frozenset((BASE_DIR / name).resolve() for name in (
+    'project_changes.py', 'project_agent.py', 'code_deploy.py', 'tool_protocol.py',
+    'personal_memory.py', 'memory_agent.py', 'assistant_identity.py',
     'config.py', 'file_tools.py', 'task_processor.py', 'server.py', 'bot_client.py',
     'bot_client_v2.py', 'web_tools.py', 'runtime.py', 'run.py', 'run_simple.py',
     'notifications', 'mood', 'mood_checkin.py', 'agenda_queries.py', 'contacts_tools.py', 'deepseek_balance.py', 'contacts_bridge.py', 'contacts_requests', 'setup_contacts.sh', 'summaries', '.models', 'helpers', 'voice_tools.py', 'morning_summary.py', 'setup_agenda.sh', 'launch_server.py', 'Запустить MAX бот.command', 'requirements.txt', 'setup_max_tls.py', 'command_tools.py', 'lm_connection.py', 'app_tools.py', 'notification_forwarder.py',
 ))
 PROTECTED_PARTS = frozenset(('.secrets', '.git', '.venv', '.ssh', '.aws', '.codex', '.agents',
-                             '.bot_file_backups', '__pycache__'))
+                             '.bot_file_backups', '.code_changes', '__pycache__'))
 
 
 def digest(data):

@@ -144,9 +144,13 @@ def index():
 
 @app.route('/api/status')
 def status():
+    from project_changes import project_changes as code_manager
     return jsonify(status='ok', bot_id=BOT_ID, monitoring_active=monitoring_active,
                    monitoring_error=monitoring_error, chat_configured=CHAT_ID is not None,
                    worker_active=worker_active, worker_error=worker_error,
+                   code_changes_enabled=code_manager.enabled,
+                   code_changes_authorized_chats=len(code_manager.allowed_chats),
+                   code_changes_authorized_senders=len(code_manager.allowed_senders),
                    personal_memory_enabled=personal_memory.enabled, personal_memory_agent_enabled=personal_memory.use_agent, personal_memory_allowed_chats=len(personal_memory.allowed_chats),
                    model_routing=routing_status(), model_provider=LM_PROVIDER, model_name=LM_MODEL, mood_checkin=mood_checkin.status(), morning_summary=morning_summary.status(), voice_diagnostics=dict(voice_diagnostics), voice_enabled=VOICE_ENABLED, notifications=notification_forwarder.status(),
                    web_enabled=WEB_ENABLED, file_tools_enabled=FS_ENABLED,
@@ -345,6 +349,18 @@ def execute_task_message(text, **permissions):
 
 
 def execute_with_memory(task, text, execute, permissions):
+    from project_changes import handle_project_request
+    def project_notice(notice):
+        if task.get('code_notice_sent'):
+            return
+        response = bot_client.send_message(task['chat_id'], notice, reply_to_message_id=task['bot_message_id'])
+        if message_id((response or {}).get('message', {})):
+            with lock:
+                task['code_notice_sent'] = True
+                persist(task)
+    project_result = handle_project_request(task, strip_assistant_address(text), notify=project_notice)
+    if project_result is not None:
+        return project_result
     # Memory only consumes original MAX messages/ASR, never tool output or HTTP tasks.
     sender_id = task.get('sender_id') if task.get('source') == 'max' and not task.get('memory_excluded') else None
     with personal_memory.turn(text, task['chat_id'], sender_id, task['task_id']) as direct:
@@ -362,6 +378,9 @@ def process_next_task():
         pending_delivery = next((t for t in active_tasks.values()
                                  if t['status'] == 'completed' and not t.get('delivered', True)
                                  and t.get('delivery_retry_at', 0) <= time.time()), None)
+        from project_changes import deployment_pending
+        if pending_delivery is None and deployment_pending():
+            return False
         task = next((t for t in active_tasks.values()
                      if t['status'] == 'queued' and t.get('retry_at', 0) <= time.time()), None)
         if pending_delivery is None and task is None:
