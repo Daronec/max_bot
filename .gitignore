@@ -98,3 +98,7 @@ Thumbs.db
 
 # Private source drafts, test logs and deployment recovery copies
 /.code_changes/
+
+# Isolated local voice cloning: dependencies and private recordings
+/.venv-tts/
+/.voices/

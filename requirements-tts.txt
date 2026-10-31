@@ -1,0 +1,8 @@
+# Optional voice-cloning environment; do not install into the bot's .venv.
+mlx-audio==0.6.3
+mlx==0.32.4
+transformers==5.22.1
+huggingface-hub==2.4.0
+soundfile==0.14.0
+imageio-ffmpeg==0.7.0
+python-dotenv==1.2.4

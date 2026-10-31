@@ -26,7 +26,7 @@ def safe_path(root, name):
     path = PurePosixPath(name)
     if path.is_absolute() or '..' in path.parts or str(path) != name or not path.parts or '\\' in name:
         raise ValueError('Invalid deployment path')
-    public = {'.env.example', '.gitignore', 'requirements.txt', 'README.md', 'START.md'}
+    public = {'.env.example', '.gitignore', 'requirements.txt', 'requirements-tts.txt', 'README.md', 'START.md'}
     if any(part.startswith('.') for part in path.parts) and name not in public:
         raise ValueError('Private deployment path')
     allowed = (len(path.parts)==1 and (path.suffix in {'.py','.md','.sh','.command'} or name in public)

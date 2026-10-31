@@ -17,7 +17,7 @@ from config import BASE_DIR, CODE_CHANGES_ENABLED, CODE_ALLOWED_CHAT_IDS, CODE_A
 
 _LOCK = threading.RLock()
 JOB_ID = re.compile(r'^[a-f0-9]{12}$')
-PUBLIC_ROOT_FILES = {'.env.example', '.gitignore', 'requirements.txt', 'README.md', 'START.md'}
+PUBLIC_ROOT_FILES = {'.env.example', '.gitignore', 'requirements.txt', 'requirements-tts.txt', 'README.md', 'START.md'}
 PRIVATE_PARTS = {'.env', '.git', '.venv', '.code_changes', 'memory', 'tasks', 'logs',
                  'uploads', 'certs', '.secrets', '.models', '.bot_file_backups', '__pycache__'}
 
