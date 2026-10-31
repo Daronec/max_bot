@@ -114,3 +114,6 @@ MEMORY_ALLOWED_CHAT_IDS = frozenset(value.strip() for value in os.environ.get(
     'MEMORY_ALLOWED_CHAT_IDS', ','.join(FS_ALLOWED_CHAT_IDS)).split(',') if value.strip())
 MEMORY_DB_PATH = Path(os.environ.get('MEMORY_DB_PATH', str(BASE_DIR / 'memory' / 'personal.sqlite3'))).expanduser()
 MEMORY_TIMEOUT = float(os.environ.get('MEMORY_TIMEOUT', '20'))
+
+MEMORY_AGENT_ENABLED = os.environ.get('MEMORY_AGENT_ENABLED', 'true').lower() not in ('0', 'false', 'no', 'off')
+MEMORY_AGENT_MAX_ROUNDS = max(2, min(12, int(os.environ.get('MEMORY_AGENT_MAX_ROUNDS', '8'))))

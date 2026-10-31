@@ -16,7 +16,7 @@ import threading
 from urllib.parse import urlsplit
 
 from config import (MEMORY_ENABLED, MEMORY_ALLOWED_CHAT_IDS, MEMORY_DB_PATH,
-                    MEMORY_TIMEOUT, LOCAL_LM_BASE_URL, LOCAL_LM_MODEL, LOCAL_LM_API_KEY)
+                    MEMORY_TIMEOUT, MEMORY_AGENT_ENABLED, LOCAL_LM_BASE_URL, LOCAL_LM_MODEL, LOCAL_LM_API_KEY)
 from assistant_identity import strip_assistant_address
 from lm_connection import intent_session, model_post, model_get
 from intent_router import RouteDecision
@@ -296,9 +296,11 @@ def relevant_facts(facts, text):
 
 
 class PersonalMemory:
-    def __init__(self, store=None, extractor=None, enabled=MEMORY_ENABLED, allowed_chats=MEMORY_ALLOWED_CHAT_IDS):
+    def __init__(self, store=None, extractor=None, enabled=MEMORY_ENABLED, allowed_chats=MEMORY_ALLOWED_CHAT_IDS, agent=None, use_agent=None):
         self.store=store if store is not None else MemoryStore()
         self.extractor=extractor if extractor is not None else QwenExtractor()
+        self.agent=agent
+        self.use_agent=(MEMORY_AGENT_ENABLED and extractor is None) if use_agent is None else use_agent
         self.enabled=enabled
         self.allowed_chats=allowed_chats
 
@@ -313,6 +315,22 @@ class PersonalMemory:
         scope=hashlib.sha256(f'{chat_id}:{sender_id}'.encode()).hexdigest()
         explicit=bool(REMEMBER.match(text))
         structured=explicit_fields(text) if explicit else None
+        if self.use_agent and not (AGE_QUERY.fullmatch(text) or RECALL.fullmatch(text) or FORGET.match(text) or structured):
+            if self.agent is None:
+                from memory_agent import QwenMemoryAgent
+                self.agent=QwenMemoryAgent()
+            try:
+                outcome=self.agent.run(self.store,scope,event_id,text)
+            except Exception as error:
+                logger.warning('memory_agent_unavailable error=%s',type(error).__name__)
+                token=_turn.set(MemoryTurn(force_local=True))
+                try:yield 'Не удалось обработать личную память. Сохранение не подтверждено; попробуйте ещё раз.'
+                finally:_turn.reset(token)
+                return
+            token=_turn.set(MemoryTurn(outcome.context,outcome.force_local,outcome.notice))
+            try:yield outcome.reply
+            finally:_turn.reset(token)
+            return
         direct=None
         notice=''
         personal=bool(PERSONAL.search(text))

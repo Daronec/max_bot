@@ -147,7 +147,7 @@ def status():
     return jsonify(status='ok', bot_id=BOT_ID, monitoring_active=monitoring_active,
                    monitoring_error=monitoring_error, chat_configured=CHAT_ID is not None,
                    worker_active=worker_active, worker_error=worker_error,
-                   personal_memory_enabled=personal_memory.enabled, personal_memory_allowed_chats=len(personal_memory.allowed_chats),
+                   personal_memory_enabled=personal_memory.enabled, personal_memory_agent_enabled=personal_memory.use_agent, personal_memory_allowed_chats=len(personal_memory.allowed_chats),
                    model_routing=routing_status(), model_provider=LM_PROVIDER, model_name=LM_MODEL, mood_checkin=mood_checkin.status(), morning_summary=morning_summary.status(), voice_diagnostics=dict(voice_diagnostics), voice_enabled=VOICE_ENABLED, notifications=notification_forwarder.status(),
                    web_enabled=WEB_ENABLED, file_tools_enabled=FS_ENABLED,
                    file_tools_authorized_chats=len(FS_ALLOWED_CHAT_IDS), commands_enabled=COMMANDS_ENABLED)
