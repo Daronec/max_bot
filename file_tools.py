@@ -18,7 +18,7 @@ _actions = ContextVar('file_actions', default=None)
 _action_observer = ContextVar('file_action_observer', default=None)
 BACKUP_DIR = BASE_DIR / '.bot_file_backups'
 PROTECTED_PATHS = frozenset((BASE_DIR / name).resolve() for name in (
-    'project_changes.py', 'project_agent.py', 'code_deploy.py', 'tool_protocol.py',
+    'command_menu.py', 'project_changes.py', 'project_agent.py', 'code_deploy.py', 'tool_protocol.py',
     'personal_memory.py', 'memory_agent.py', 'assistant_identity.py',
     'config.py', 'file_tools.py', 'task_processor.py', 'server.py', 'bot_client.py',
     'bot_client_v2.py', 'web_tools.py', 'runtime.py', 'run.py', 'run_simple.py',

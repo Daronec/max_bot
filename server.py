@@ -216,8 +216,11 @@ def deliver_result(task):
         chunks = [task['result'][i:i + 4000] for i in range(0, len(task['result']), 4000)]
         sent = task.get('sent_chunks', 0)
         for index in range(sent, len(chunks)):
+            options = {}
+            if index == 0 and task.get('result_attachments'):
+                options['attachments'] = task['result_attachments']
             response = bot_client.send_message(task['chat_id'], chunks[index],
-                                              reply_to_message_id=task['bot_message_id'])
+                                              reply_to_message_id=task.get('reply_to_message_id',task['bot_message_id']), **options)
             if not message_id((response or {}).get('message', {})):
                 task.update(delivered=False, delivery_retry_at=time.time() + WORKER_RETRY_SECONDS)
                 persist(task)
@@ -278,6 +281,10 @@ def get_task():
 
 
 def handle_update(update):
+    from command_menu import normalize_menu_update
+    update = normalize_menu_update(update, bot_client)
+    if update is None:
+        return
     if update.get('update_type') != 'message_created':
         return
     message = update.get('message') or {}
@@ -314,6 +321,8 @@ def handle_update(update):
         if tid not in active_tasks:
             task = dict(task_id=tid, message=text, chat_id=chat, bot_message_id=mid, source='max',
                         status='queued', timestamp=now(), result=None)
+            if '_menu_reply_to' in update:
+                task['reply_to_message_id'] = update['_menu_reply_to']
             if (message.get('link') or {}).get('type') in {'forward', 'forwarded'} or message.get('forwarded_from'):
                 task['memory_excluded'] = True
             sender = message.get('sender') or {}
@@ -349,6 +358,12 @@ def execute_task_message(text, **permissions):
 
 
 def execute_with_memory(task, text, execute, permissions):
+    from command_menu import handle_menu_command
+    menu_result = handle_menu_command(task, strip_assistant_address(text))
+    if menu_result is not None:
+        return menu_result
+    if text.strip().lower() in ('/contacts','/reminders','/summary','/voice','/balance'):
+        return execute(text, **permissions)
     from project_changes import handle_project_request
     def project_notice(notice):
         if task.get('code_notice_sent'):

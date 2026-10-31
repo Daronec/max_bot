@@ -69,15 +69,21 @@ class MAXBotClient:
             return None
 
     def send_message(self, chat_id, text, reply_to_message_id=None,
-                     parse_mode=None, disable_notification=False):
+                     parse_mode=None, disable_notification=False, attachments=None):
         chat_id = self.validate_chat_id(chat_id)
         data = {'text': text, 'notify': not disable_notification}
+        if attachments is not None:
+            data['attachments'] = attachments
         if parse_mode:
             data['format'] = parse_mode.lower()
         if reply_to_message_id is not None:
             data['link'] = {'type': 'reply', 'mid': str(reply_to_message_id)}
         return self._request('POST', '/messages', params={'chat_id': chat_id},
                              data=data, send_chat=chat_id)
+
+    def answer_callback(self, callback_id, notification=''):
+        return self._request('POST', '/answers', params={'callback_id': str(callback_id)},
+                             data={'notification': notification[:200]})
 
     def get_last_messages(self, chat_id, limit=50):
         return self._request('GET', '/messages', params={
@@ -88,7 +94,7 @@ class MAXBotClient:
 
     def get_updates(self, offset=None):
         marker = self.marker if offset is None else offset
-        params = {'timeout': 25, 'types': 'message_created'}
+        params = {'timeout': 25, 'types': 'message_created,message_callback,bot_started'}
         if marker is not None:
             params['marker'] = marker
         return self._request('GET', '/updates', params=params)
