@@ -3,7 +3,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 import hashlib
 import json
 import logging
@@ -41,7 +42,11 @@ EXTRACTION_PROMPT = '''Ты извлекаешь только явно сооб�
 пересказы чужих историй, предположения о людях, эмоции текущего момента и задания.
 Факты относятся только к автору сообщения или его явно названной семье/работе.
 slot — короткий стабильный идентификатор атрибута, например self.name, self.city,
-self.profession, self.employer, self.role, family.wife.name, preferences.language.
+self.profession, self.employer, self.role, self.address, self.birth_date,
+family.wife.name, preferences.language. Адрес проживания и дата рождения — допустимые
+личные факты; по явной просьбе «запомни» обязательно извлекай их. Не изменяй
+сокращения, регистр, пунктуацию, номера домов/квартир и написание дат в evidence.
+Адрес пометь sensitive=true. Даты родственников не относятся к self.birth_date.
 Для разных родственников используй разные slot, учитывай имя человека.
 evidence должна быть точной цитатой и содержать весь факт, без домыслов и пересказа.
 Здоровье, финансы, убеждения и интимные отношения пометь sensitive=true.
@@ -86,6 +91,84 @@ def local_endpoint():
     return urlsplit(LOCAL_LM_BASE_URL).hostname in {'127.0.0.1', 'localhost', '::1'}
 
 
+MONTHS = {name:i for i,names in enumerate([
+    ('января','январь'), ('февраля','февраль'), ('марта','март'), ('апреля','апрель'),
+    ('мая','май'), ('июня','июнь'), ('июля','июль'), ('августа','август'),
+    ('сентября','сентябрь'), ('октября','октябрь'), ('ноября','ноябрь'), ('декабря','декабрь')],1) for name in names}
+AGE_QUERY = re.compile(r'^(?:(?:скажи|подскажи|посчитай|рассчитай)[,\s]+)?(?:'
+    r'сколько\s+мне\s+(?:сейчас\s+)?(?:полных\s+)?лет|'
+    r'какой\s+(?:у\s+меня\s+|мой\s+)(?:сейчас\s+)?возраст|мой\s+возраст)'
+    r'(?:\s+(?:сейчас|на\s+сегодня))?[?.!\s]*$',re.I)
+ADDRESS_FIELD = re.compile(r'^(?:(?:мой\s+)?(?:домашний\s+|почтовый\s+)?адрес'
+    r'(?:\s+(?:моего\s+)?(?:проживания|регистрации|прописки))?\s*[:=—-]\s*|'
+    r'я\s+(?:живу|проживаю)\s+по\s+адресу\s*[:=—-]?\s*)(?P<value>.+)$',re.I|re.S)
+BIRTH_FIELD = re.compile(r'^(?:(?:моя\s+)?дата\s+рождения|мой\s+день\s+рождения|я\s+родил(?:ся|ась))\b',re.I)
+FAMILY_BIRTH = re.compile(r'\b(?:жена|жену|жены|муж|мужа|сын|сына|дочь|дочери|мама|мамы|папа|папы|брат|брата|сестра|сестры|родители|ребёнок|ребенок|дети|мать|матери|отец|отца|супруга|супруги)\b',re.I)
+
+
+def parse_birth_date(text):
+    """Only complete, unambiguous dates. Never infer a century or missing day."""
+    patterns = [
+        (r'(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)',(1,2,3)),
+        (r'(?<!\d)(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?!\d)',(3,2,1)),
+    ]
+    found=set()
+    for pattern,order in patterns:
+        for m in re.finditer(pattern,text):
+            try:found.add(date(*(int(m.group(i)) for i in order)))
+            except ValueError:pass
+    for m in re.finditer(r'(?<!\d)(\d{1,2})\s+('+'|'.join(MONTHS)+r')\s+(\d{4})(?!\d)',text,re.I):
+        try:found.add(date(int(m.group(3)),MONTHS[m.group(2).casefold()],int(m.group(1))))
+        except ValueError:pass
+    return next(iter(found)) if len(found)==1 else None
+
+
+def explicit_fields(text):
+    """Literal structured assignments do not depend on an LLM paraphrasing them."""
+    content=REMEMBER.sub('',text,count=1).strip()
+    slot=None
+    if (match:=ADDRESS_FIELD.fullmatch(content)) and len(match.group('value').strip())>=5:
+        slot='self.address'
+    elif BIRTH_FIELD.match(content) and parse_birth_date(content) is not None:
+        slot='self.birth_date'
+    if slot is None:return None
+    return {'facts':[{'category':'personal','slot':slot,'evidence':content,'sensitive':slot=='self.address'}]}
+
+
+def uncertain(text, allow_address_quotes=False):
+    if allow_address_quotes:
+        text=text.translate(str.maketrans('', '', '«»"'))
+    return bool(UNCERTAIN.search(text))
+
+
+def today_local():
+    return datetime.now(ZoneInfo('Europe/Moscow')).date()
+
+
+def age_reply(facts, as_of=None):
+    """Calculate completed years deterministically from the user's own birthday."""
+    today=as_of or today_local()
+    dates=set()
+    for fact in facts:
+        slot=fact['slot'].casefold()
+        evidence=fact['evidence']
+        birthday=bool(re.search(r'birth|birthday|dob|дата.*рожд|родил',slot+' '+evidence,re.I))
+        own=(slot.startswith(('self.','user.')) or fact['category']=='personal')
+        if birthday and own and not slot.startswith('family.') and not FAMILY_BIRTH.search(evidence):
+            parsed=parse_birth_date(evidence)
+            if parsed is not None:dates.add(parsed)
+    if len(dates)>1:
+        return 'В памяти есть разные даты вашего рождения. Уточните: «Исправь в памяти: моя дата рождения — ДД.ММ.ГГГГ».'
+    if not dates:
+        return 'Не нашла полную дату вашего рождения. Напишите: «Запомни: моя дата рождения — ДД.ММ.ГГГГ».'
+    birth=dates.pop()
+    years=today.year-birth.year-((today.month,today.day)<(birth.month,birth.day))
+    if years<0 or years>130:
+        return 'Сохранённая дата рождения выглядит некорректной. Уточните её, чтобы я рассчитала возраст.'
+    word='лет' if 11<=years%100<=14 else ('год' if years%10==1 else 'года' if years%10 in {2,3,4} else 'лет')
+    return f'На {today.strftime("%d.%m.%Y")} вам {years} {word}.'
+
+
 class QwenExtractor:
     def extract(self, text, explicit=False):
         if not local_endpoint():
@@ -121,9 +204,9 @@ def validate_facts(result, text, explicit):
         category, slot, evidence = (item.get(key) for key in ('category','slot','evidence'))
         if category not in CATEGORIES or not isinstance(slot,str) or not re.fullmatch(r'[a-z][a-z0-9_.-]{1,100}',slot):continue
         if not isinstance(evidence,str) or not 3 <= len(evidence) <= 700 or evidence not in text:continue
-        if SECRET.search(evidence) or UNCERTAIN.search(evidence):continue
+        if SECRET.search(evidence) or uncertain(evidence,explicit and slot=='self.address'):continue
         if re.search(r'\b(?:игнорируй|запусти|выполни|вызови|отправь|удали|скачай|ignore|execute|system|developer)\b',evidence,re.I):continue
-        if not explicit and (not PERSONAL.search(evidence) or item.get('sensitive') is not False or category in {'health','finance'} or SENSITIVE.search(evidence)):continue
+        if not explicit and (not PERSONAL.search(evidence) or item.get('sensitive') is not False or category in {'health','finance'} or 'address' in slot or SENSITIVE.search(evidence)):continue
         facts.append(Fact(category,slot,evidence))
     return facts
 
@@ -193,7 +276,7 @@ def relevant_facts(facts, text):
     for pattern, names in [
         (r'семь|жен[аыуе]|муж|дет[ие]|реб[её]н|сын|доч|мам|пап|родител',{'family'}),
         (r'работ|професси|должност|карьер|собеседован|резюме|проект|навык|опыт|специальност|компани|чем я занимаюсь|кем я',{'profession','work'}),
-        (r'имя|зовут|город|живу|жив[её]шь|возраст|родил',{'personal'}),
+        (r'имя|зовут|город|живу|жив[её]шь|прожив|адрес|возраст|родил|рожд|сколько.*лет',{'personal'}),
         (r'предпоч|люблю|нравит|обща|язык',{'preferences'}),
         (r'здоров|диагноз|болезн',{'health'}), (r'доход|зарплат|финанс|кредит',{'finance'})]:
         if re.search(pattern,text,re.I):categories.update(names)
@@ -204,7 +287,12 @@ def relevant_facts(facts, text):
            for f in facts):
         categories.add('family')
     if not categories:return []
-    return [fact for fact in facts if fact['category'] in categories][:12]
+    selected=[fact for fact in facts if fact['category'] in categories]
+    if re.search(r'адрес|прожив|где.*жив',text,re.I):
+        selected.sort(key=lambda f: not bool(re.search(r'address|адрес',f['slot']+' '+f['evidence'],re.I)))
+    elif re.search(r'рожд|возраст|сколько.*лет',text,re.I):
+        selected.sort(key=lambda f: not bool(re.search(r'birth|dob|рожд|родил',f['slot']+' '+f['evidence'],re.I)))
+    return selected[:12]
 
 
 class PersonalMemory:
@@ -219,17 +307,20 @@ class PersonalMemory:
         text=strip_assistant_address(text)
         # No anonymous/group-shared memory and no ingestion from local HTTP tasks.
         if not self.enabled or str(chat_id) not in self.allowed_chats or sender_id is None or not event_id:
-            command = REMEMBER.match(text) or RECALL.fullmatch(text) or FORGET.match(text)
+            command = REMEMBER.match(text) or RECALL.fullmatch(text) or FORGET.match(text) or AGE_QUERY.fullmatch(text)
             yield ('Личная память недоступна для этого сообщения: нужен разрешённый чат и известный отправитель.' if command else None)
             return
         scope=hashlib.sha256(f'{chat_id}:{sender_id}'.encode()).hexdigest()
         explicit=bool(REMEMBER.match(text))
+        structured=explicit_fields(text) if explicit else None
         direct=None
         notice=''
         personal=bool(PERSONAL.search(text))
         auto=personal and not UNCERTAIN.search(text) and not SENSITIVE.search(text) and len(text)<=8000
         try:
-            if RECALL.fullmatch(text):
+            if AGE_QUERY.fullmatch(text):
+                direct=age_reply(self.store.list(scope,limit=-1))
+            elif RECALL.fullmatch(text):
                 facts=self.store.list(scope)
                 direct='Вот что я помню о вас:\n'+'\n'.join(f"• {LABELS[f['category']]}: {f['evidence']}" for f in facts) if facts else 'Пока я ничего о вас не сохранила.'
             elif (match:=FORGET.match(text)):
@@ -238,10 +329,10 @@ class PersonalMemory:
             elif explicit or auto:
                 if SECRET.search(text):
                     if explicit:direct='Пароли, токены и ключи я не сохраняю в личную память.'
-                elif explicit and UNCERTAIN.search(text):
+                elif explicit and uncertain(text,bool(structured and structured['facts'][0]['slot']=='self.address')):
                     direct='Не сохраняю предположения, вопросы и цитаты как личные факты. Сформулируйте факт прямо.'
                 elif not self.store.processed(scope,event_id):
-                    facts=validate_facts(self.extractor.extract(text,explicit),text,explicit)
+                    facts=validate_facts(structured if structured else self.extractor.extract(text,explicit),text,explicit)
                     count=self.store.save(scope,event_id,facts)
                     if explicit:
                         direct=('Запомнила:\n'+'\n'.join('• '+f.evidence for f in facts)) if count else 'Не нашла явных личных фактов для сохранения. Уточните, что запомнить.'
@@ -261,7 +352,7 @@ class PersonalMemory:
             turn=MemoryTurn(context, bool(explicit or auto or selected or personal or SECRET.search(text)), notice)
         except Exception as error:
             logger.warning('personal_memory_failed error=%s',type(error).__name__)
-            direct='Не удалось сохранить или прочитать личную память. Ничего не подтверждаю; попробуйте ещё раз.' if explicit or RECALL.fullmatch(text) or FORGET.match(text) else None
+            direct='Не удалось сохранить или прочитать личную память. Ничего не подтверждаю; попробуйте ещё раз.' if explicit or RECALL.fullmatch(text) or FORGET.match(text) or AGE_QUERY.fullmatch(text) else None
             turn=MemoryTurn(force_local=bool(personal or explicit or SECRET.search(text)))
         if direct is None and turn.force_local and not local_endpoint():
             direct='Для работы с личной памятью настройте локальный Qwen на этом компьютере.'
