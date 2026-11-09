@@ -2,8 +2,8 @@ import json
 import unittest
 from unittest.mock import Mock
 import requests
-from execution_context import ExecutionContext,execution_session
-from model_stream import consume
+from assistant_app.core.execution_context import ExecutionContext,execution_session
+from assistant_app.models.stream import consume
 
 
 def response(events):

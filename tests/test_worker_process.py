@@ -6,8 +6,8 @@ import tempfile
 import time
 import unittest
 
-from process_manager import ProcessManager
-from task_store import SQLiteTaskStore
+from assistant_app.operations.process_manager import ProcessManager
+from assistant_app.core.task_store import SQLiteTaskStore
 
 
 class WorkerProcessTests(unittest.TestCase):

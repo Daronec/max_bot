@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from task_store import SQLiteTaskStore, TaskConflict
+from assistant_app.core.task_store import SQLiteTaskStore, TaskConflict
 
 
 def task(tid='one', **changes):

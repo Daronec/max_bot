@@ -1,9 +1,9 @@
 import tempfile
 import unittest
 from datetime import datetime, timezone
-from automation_service import AutomationService
-from task_store import SQLiteTaskStore
-from task_service import TaskConflict
+from assistant_app.services.automation_service import AutomationService
+from assistant_app.core.task_store import SQLiteTaskStore
+from assistant_app.core.task_service import TaskConflict
 
 
 class AutomationTests(unittest.TestCase):
@@ -41,7 +41,7 @@ class AutomationTests(unittest.TestCase):
         self.assertEqual(self.service.tick(9999999999), [])
 
     def test_linked_channel_is_frozen_and_revocation_disables_schedule(self):
-        from identity_service import IdentityService
+        from assistant_app.channels.identities import IdentityService
         initial=self.store.submit_chat('start','local_owner')
         initial.update(status='completed',result='done',completed_at='now',delivered=True);self.store.save(initial)
         identities=IdentityService(self.store)

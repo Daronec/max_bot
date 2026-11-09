@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -14,12 +15,19 @@ ROOT=Path(__file__).resolve().parents[1]
 
 class EnvConfigurationTests(unittest.TestCase):
     def load(self, directory):
-        target=Path(directory)/'config.py'
-        shutil.copy2(ROOT/'config.py',target)
-        spec=importlib.util.spec_from_file_location('isolated_bot_config', target)
-        config=importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(config)
-        return config
+        def load_copy(name, filename):
+            target = Path(directory) / filename
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / filename, target)
+            spec = importlib.util.spec_from_file_location(name, target)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+
+        paths = load_copy('isolated_bot_paths', 'assistant_app/paths.py')
+        self.assertEqual(paths.PROJECT_ROOT, Path(directory).resolve())
+        with patch.dict(sys.modules, {'assistant_app.paths': paths}):
+            return load_copy('isolated_bot_config', 'assistant_app/config.py')
 
     def test_project_env_loads_secrets_and_private_destinations(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
@@ -71,7 +79,7 @@ class EnvConfigurationTests(unittest.TestCase):
             self.assertIsNone(config.CHAT_ID)
 
     def test_bot_token_has_no_embedded_fallback(self):
-        tree=ast.parse((ROOT/'config.py').read_text())
+        tree=ast.parse((ROOT/'assistant_app/config.py').read_text())
         assignment=next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='BOT_TOKEN' for t in n.targets))
         self.assertEqual([v.value for v in ast.walk(assignment.value) if isinstance(v,ast.Constant)], ['MAX_BOT_TOKEN',''])
 

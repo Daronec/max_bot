@@ -5,9 +5,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import requests
-import server
-import task_processor
-from intent_router import RouteDecision
+from assistant_app.core import server
+from assistant_app.core import task_processor
+from assistant_app.models.router import RouteDecision
 from test_bot import msg
 
 
@@ -26,7 +26,7 @@ class ProcessorTests(unittest.TestCase):
     def test_native_lmstudio_disables_thinking_and_returns_final_text(self):
         with patch.object(task_processor, 'LM_API_MODE', 'lmstudio'), \
                 patch.object(task_processor, 'WEB_ENABLED', False), \
-                patch('config.LOCAL_LM_MODEL', 'qwen/qwen3.5-9b'), \
+                patch('assistant_app.config.LOCAL_LM_MODEL', 'qwen/qwen3.5-9b'), \
                 patch.object(task_processor.requests, 'post') as post:
             post.return_value.json.return_value = {'output': [
                 {'type': 'reasoning', 'content': 'internal'},
@@ -37,7 +37,7 @@ class ProcessorTests(unittest.TestCase):
             self.assertFalse(post.call_args.kwargs['json']['store'])
 
     def test_auto_select_model_and_generate(self):
-        with patch('config.LOCAL_LM_MODEL', ''), \
+        with patch('assistant_app.config.LOCAL_LM_MODEL', ''), \
                 patch.object(task_processor.requests, 'get') as get, \
                 patch.object(task_processor.requests, 'post') as post:
             get.return_value.json.return_value = {'data': [{'id': 'embed-model'}, {'id': 'local-chat'}]}
@@ -48,7 +48,7 @@ class ProcessorTests(unittest.TestCase):
             self.assertEqual(payload['messages'][-1], {'role':'user','content':'Задание'})
 
     def test_configured_model_skips_discovery(self):
-        with patch('config.LOCAL_LM_MODEL', 'chosen'), \
+        with patch('assistant_app.config.LOCAL_LM_MODEL', 'chosen'), \
                 patch.object(task_processor.requests, 'get') as get, \
                 patch.object(task_processor.requests, 'post') as post:
             post.return_value.json.return_value = {'choices': [{'message': {'content': 'answer'}}]}
@@ -56,11 +56,11 @@ class ProcessorTests(unittest.TestCase):
             get.assert_not_called()
 
     def test_unavailable_or_empty_model(self):
-        with patch('config.LOCAL_LM_MODEL', ''), \
+        with patch('assistant_app.config.LOCAL_LM_MODEL', ''), \
                 patch.object(task_processor.requests, 'get', side_effect=requests.ConnectionError):
             with self.assertRaises(task_processor.ProcessingError):
                 task_processor.process_message('task')
-        with patch('config.LOCAL_LM_MODEL', 'local'), \
+        with patch('assistant_app.config.LOCAL_LM_MODEL', 'local'), \
                 patch.object(task_processor.requests, 'post') as post:
             post.return_value.json.return_value = {'choices': [{'message': {'content': ''}}]}
             with self.assertRaises(task_processor.ProcessingError):

@@ -7,9 +7,9 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-import file_tools
-import server
-import task_processor
+from assistant_app.tools import file_tools
+from assistant_app.core import server
+from assistant_app.core import task_processor
 
 
 class FileTests(unittest.TestCase):
@@ -118,7 +118,8 @@ class FileTests(unittest.TestCase):
             self.assertEqual(target.read_text(), 'secret')
 
     def test_credentials_control_files_and_backup_history_protected(self):
-        for name in ('config.py', '.env', '.env.local', 'id_rsa'):
+        (self.root/'assistant_app').mkdir()
+        for name in ('config.py', 'assistant_app/config.py', '.env', '.env.local', 'id_rsa'):
             (self.root/name).write_text('secret')
             self.assertIn('error', file_tools.read_file(name))
         (self.root/'guard.py').write_text('code')

@@ -4,8 +4,8 @@ from pathlib import Path
 import sys
 import tempfile
 root=Path(__file__).resolve().parents[1];sys.path.insert(0,str(root))
-from speech_service import synthesize_task
-from task_store import SQLiteTaskStore
+from assistant_app.speech.service import synthesize_task
+from assistant_app.core.task_store import SQLiteTaskStore
 with tempfile.TemporaryDirectory(prefix='assistant-tts-test-') as directory:
  store=SQLiteTaskStore(directory)
  original=store.submit_chat('Проверка речи','local_owner')

@@ -4,9 +4,9 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
-import personal_memory as pm
-import server
-import task_processor as processor
+from assistant_app.memory import personal as pm
+from assistant_app.core import server
+from assistant_app.core import task_processor as processor
 
 
 def result(evidence='Я работаю инженером', slot='self.profession', category='profession', sensitive=False):

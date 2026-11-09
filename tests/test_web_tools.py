@@ -5,9 +5,9 @@ import unittest
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlsplit
 
-import web_tools
-import task_processor
-from intent_router import RouteDecision
+from assistant_app.tools import web_tools
+from assistant_app.core import task_processor
+from assistant_app.models.router import RouteDecision
 
 
 class WebToolsTests(unittest.TestCase):

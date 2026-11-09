@@ -7,8 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import server
-from task_service import TaskService, record_lifecycle
+from assistant_app.core import server
+from assistant_app.core.task_service import TaskService, record_lifecycle
 
 
 class TaskServiceTests(unittest.TestCase):

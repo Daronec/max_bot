@@ -6,10 +6,10 @@ import time
 import unittest
 from unittest.mock import MagicMock, patch
 
-import command_tools
-import file_tools
-import server
-import task_processor
+from assistant_app.tools import command_tools
+from assistant_app.tools import file_tools
+from assistant_app.core import server
+from assistant_app.core import task_processor
 
 
 class CommandTests(unittest.TestCase):

@@ -7,8 +7,8 @@ import tempfile
 import unittest
 import zipfile
 
-from backup_bundle import create, extract, prepare_installation
-from task_store import SQLiteTaskStore
+from assistant_app.operations.backup_bundle import create, extract, prepare_installation
+from assistant_app.core.task_store import SQLiteTaskStore
 
 
 class BundleTests(unittest.TestCase):
@@ -35,7 +35,10 @@ class BundleTests(unittest.TestCase):
         with self.assertRaises(ValueError):extract(self.bundle,destination)
 
     def test_clean_installation_preserves_data_but_does_not_replay_work(self):
-        from automation_service import AutomationService
+        from assistant_app.services.automation_service import AutomationService
+        module = Path('assistant_app/channels/telegram.py')
+        (self.root / module).parent.mkdir(parents=True)
+        (self.root / module).write_text('channel = "telegram"\n')
         task=self.store.submit_chat('pending','local_owner')
         AutomationService(self.store).create(dict(title='daily',prompt='hello',kind='interval',interval=60))
         create(self.root,self.root/'tasks',self.bundle)
@@ -45,6 +48,7 @@ class BundleTests(unittest.TestCase):
         self.assertEqual(restored.get(task['task_id'])['status'],'failed')
         self.assertFalse(AutomationService(restored).list()[0]['enabled'])
         self.assertEqual((destination/'app.py').read_text(),'print("hello")')
+        self.assertEqual((destination / module).read_text(), 'channel = "telegram"\n')
         self.assertFalse((destination/'.env').exists())
 
     def test_requires_stopped_runtime(self):

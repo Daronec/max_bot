@@ -177,13 +177,23 @@ python3 launch_server.py                        # запуск supervisor, API �
 
 ```
 max_bot_api/
-├── run.py, run_simple.py, server.py   # запуск и HTTP-сервер
-├── task_processor.py                  # очередь и обработка заданий моделью
-├── bot_client.py, bot_client_v2.py    # клиент MAX Bot API
-├── lm_connection.py                   # подключение к LM Studio
-├── web_tools.py, file_tools.py, command_tools.py, app_tools.py, voice_tools.py
-├── morning_summary.py, notification_forwarder.py, mood_checkin.py
-├── config.py                          # настройки
+├── run.py, worker.py, supervisor.py  # точки входа API, worker и панели
+├── launch_server.py, server.py       # запуск из Terminal и совместимый запуск API
+├── assistant_app/
+│   ├── config.py                      # конфигурация и рабочие пути
+│   ├── paths.py                       # корень проекта и путь к рабочим данным
+│   ├── api/                           # HTTP-маршруты, авторизация и панель supervisor
+│   ├── channels/                      # MAX, Telegram и привязка каналов
+│   ├── core/                          # контекст, очередь задач и доставка ответов
+│   ├── memory/                        # личная память, извлечение фактов и SQLite
+│   ├── knowledge/                     # индексация документов, гибридный поиск и RAG
+│   ├── models/                        # роутер, реестр, шлюз и потоковые ответы
+│   ├── operations/                    # supervisor, диагностика и ежедневное обслуживание
+│   ├── projects/                      # контекст проектов и проверяемые правки
+│   ├── services/                      # автоматизации, сводки и уведомления
+│   ├── tools/                         # веб, файлы, команды и приложения macOS
+│   └── speech/                        # распознавание, синтез и профили голоса
+├── bot_client.py, bot_client_v2.py    # совместимые команды запуска клиента MAX
 ├── tests/                             # юнит-тесты (unittest)
 └── tasks/, logs/, summaries/          # данные и журналы
 ```
@@ -212,7 +222,7 @@ max_bot_api/
 
 ## Локальная маршрутизация намерений
 
-`process_message` и комментарии о настроении сначала используют `intent_router`:
+`process_message` и комментарии о настроении используют `assistant_app.models.router`:
 локальное правило → mDeBERTa → проверка локального флага API.
 Локальные операции, явно запрошенный офлайн-режим, неизвестная метка,
 ошибка классификатора и низкая уверенность выбирают Qwen. DeepSeek используется
@@ -302,7 +312,7 @@ NLI-сравнение с каждым кандидатом, поэтому тр
 ## Секреты и локальная конфигурация
 
 Токены, API-ключи, идентификатор бота и приватные chat ID хранятся в `.env`
-в корне проекта. `config.py` автоматически читает только этот файл через
+в корне проекта. `assistant_app/config.py` автоматически читает только этот файл через
 python-dotenv до создания настроек. Значения окружения процесса имеют приоритет;
 подстановки `${...}` внутри значений отключены, чтобы не менять содержимое ключей.
 Чтения ключей из `.secrets/` и встроенного токена в коде больше нет.

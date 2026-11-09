@@ -2,8 +2,8 @@ import bot_test_support  # Load synthetic configuration before application impor
 import json
 import unittest
 from unittest.mock import Mock,patch
-import contacts_tools
-import server
+from assistant_app.tools import contacts_tools
+from assistant_app.core import server
 
 
 class ContactsTests(unittest.TestCase):
@@ -37,14 +37,14 @@ class ContactsTests(unittest.TestCase):
 
 class ContactCreationTests(unittest.TestCase):
     def test_validation_prevents_save(self):
-        import command_tools
+        from assistant_app.tools import command_tools
         with patch.object(command_tools,'run_command') as run:
             self.assertIn('error',contacts_tools.create_contact(''))
             self.assertIn('error',contacts_tools.create_contact('Иван',email='invalid'))
             run.assert_not_called()
 
     def test_saved_receipt_and_duplicate(self):
-        import command_tools
+        from assistant_app.tools import command_tools
         with patch.object(command_tools,'run_command',return_value={'exit_code':0,'stdout':json.dumps({'created':True,'id':'real','name':'Иван','phone':'123'})}) as run:
             self.assertEqual(contacts_tools.create_contact('Иван',phone='123')['id'],'real')
             self.assertIn('--create',run.call_args.args[0])
@@ -52,7 +52,8 @@ class ContactCreationTests(unittest.TestCase):
             self.assertTrue(contacts_tools.create_contact('Иван',phone='123')['duplicate'])
 
     def test_model_creation_receipt_and_permissions(self):
-        import task_processor,app_tools
+        from assistant_app.core import task_processor
+        from assistant_app.tools import app_tools
         response=Mock();response.json.return_value={'choices':[{'message':{'content':None,'tool_calls':[{'id':'1','function':{'name':'create_contact','arguments':json.dumps({'given_name':'Иван','phone':'123'})}}]}}]}
         create=Mock(return_value={'created':True,'id':'real','name':'Иван','phone':'123'})
         with patch.object(task_processor,'model_post',return_value=response) as post,patch.dict(app_tools.TOOLS,{'create_contact':create}):
@@ -67,7 +68,7 @@ class ContactCreationTests(unittest.TestCase):
 
 class ContactsBridgeTests(unittest.TestCase):
     def test_launchservices_result_and_cleanup(self):
-        import contacts_bridge
+        from assistant_app.tools import contacts_bridge
         from pathlib import Path
         import tempfile
         with tempfile.TemporaryDirectory() as temp,patch.object(contacts_bridge,'BASE_DIR',Path(temp)):

@@ -4,10 +4,10 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from desktop_memory import DesktopMemory
-from execution_context import current_execution
-import server
-from task_service import TaskConflict
+from assistant_app.memory.owner import DesktopMemory
+from assistant_app.core.execution_context import current_execution
+from assistant_app.core import server
+from assistant_app.core.task_service import TaskConflict
 
 
 class DesktopMemoryTests(unittest.TestCase):
@@ -29,7 +29,7 @@ class DesktopMemoryTests(unittest.TestCase):
             memory.save('personal', 'self.name', 'Меня зовут Иван', original['updated_at'])
             with self.assertRaises(ValueError):
                 memory.save('personal', 'self.password', 'Мой пароль: secret-value')
-            with patch('desktop_memory.QwenExtractor') as extract:
+            with patch('assistant_app.memory.owner.QwenExtractor') as extract:
                 self.assertIn('не сохраняются', memory.command('Запомни мой пароль: secret-value', 'event'))
                 extract.assert_not_called()
             memory.delete('self.name')

@@ -4,8 +4,8 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock,patch
-import mood_checkin
-import task_processor
+from assistant_app.services import mood_checkin
+from assistant_app.core import task_processor
 
 
 class MoodTests(unittest.TestCase):
@@ -64,7 +64,7 @@ class MoodTests(unittest.TestCase):
 
 class MoodRoutingTests(unittest.TestCase):
     def test_incoming_answer_uses_comment_pipeline_and_replies_to_answer(self):
-        import server
+        from assistant_app.core import server
         with tempfile.TemporaryDirectory() as temp, patch.object(server,'TASKS_DIR',temp),patch.object(server,'CHAT_ID',None),patch.object(server.mood_checkin,'match_answer',return_value='question'),patch.object(server,'comment_on_mood',return_value='Понимаю тебя.') as comment,patch.object(server,'process_message') as execute,patch.object(server.bot_client,'send_message',return_value={'message':{'id':'sent'}}) as send:
             previous=dict(server.active_tasks)
             try:

@@ -3,8 +3,8 @@ import unittest
 from unittest.mock import Mock, patch
 
 import requests
-from panel_auth import PanelAuth
-from supervisor import create_app
+from assistant_app.api.auth import PanelAuth
+from assistant_app.api.control import create_app
 
 
 class SupervisorTests(unittest.TestCase):
@@ -19,7 +19,7 @@ class SupervisorTests(unittest.TestCase):
         self.headers = {'Authorization':'Bearer ' + self.auth.token}
 
     def test_control_plane_survives_unreachable_api(self):
-        with patch('supervisor.requests.request', side_effect=requests.ConnectionError):
+        with patch('assistant_app.api.control.requests.request', side_effect=requests.ConnectionError):
             response = self.client.get('/api/status', headers=self.headers)
             self.assertEqual(response.status_code, 200)
             self.assertFalse(response.get_json()['server_active'])
@@ -38,7 +38,7 @@ class SupervisorTests(unittest.TestCase):
 
     def test_proxy_preserves_path_and_body_but_not_browser_credentials(self):
         response = Mock(status_code=200, content=b'{"success":true}', headers={'Content-Type':'application/json'})
-        with patch('supervisor.requests.request', return_value=response) as forward:
+        with patch('assistant_app.api.control.requests.request', return_value=response) as forward:
             result = self.client.post('/api/chat', json={'message':'test'}, headers=self.headers)
             self.assertEqual(result.status_code, 200)
         args, kwargs = forward.call_args

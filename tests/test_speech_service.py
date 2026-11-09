@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-import server
-from telegram_adapter import TelegramAdapter, TelegramClient, TelegramError
+from assistant_app.core import server
+from assistant_app.channels.telegram import TelegramAdapter, TelegramClient, TelegramError
 
 
 class SpeechTests(unittest.TestCase):
@@ -24,7 +24,7 @@ class SpeechTests(unittest.TestCase):
         path=Path(self.directory)/'audio'/server.task_store().get(tid)['audio_upload']
         seen=[]
         def respond(text,**permissions):seen.append((text,permissions));return 'Text reply'
-        with patch('speech_service.transcribe_local',return_value='Распознанная речь'),patch.object(server,'process_message',side_effect=respond):
+        with patch('assistant_app.speech.service.transcribe_local',return_value='Распознанная речь'),patch.object(server,'process_message',side_effect=respond):
             self.assertTrue(server.process_next_task())
         self.assertFalse(path.exists())
         task=server.task_store().get(tid)
@@ -44,7 +44,7 @@ class SpeechTests(unittest.TestCase):
         task=next(iter(server.active_tasks.values()))
         self.assertEqual(task['telegram_audio'],'file-reference')
         self.assertNotIn('bot',task['telegram_audio'])
-        with patch.object(TelegramClient,'download_audio'),patch('speech_service.transcribe_local',return_value='Hello'),patch.object(server,'process_message',return_value='Reply'),patch('speech_service.synthesize_reply',return_value=task['task_id']+'.mp3') as synthesize,patch.object(server,'send_task_reply',return_value={'message':{'id':'ok'}}) as deliver:
+        with patch.object(TelegramClient,'download_audio'),patch('assistant_app.speech.service.transcribe_local',return_value='Hello'),patch.object(server,'process_message',return_value='Reply'),patch('assistant_app.speech.service.synthesize_reply',return_value=task['task_id']+'.mp3') as synthesize,patch.object(server,'send_task_reply',return_value={'message':{'id':'ok'}}) as deliver:
             server.process_next_task()
         synthesize.assert_called_once_with('Reply',task['task_id'],server.task_store(),server.BASE_DIR)
         self.assertEqual(deliver.call_count,2)
@@ -55,7 +55,7 @@ class SpeechTests(unittest.TestCase):
 
     def test_telegram_voice_synthesis_failure_keeps_text_delivery(self):
         task,_=server.task_service().submit('tg_audio','voice',42,'telegram',sender_id='42',bot_message_id=1,telegram_audio='asset')
-        with patch('speech_service.transcribe_task',return_value='Вопрос'),patch.object(server,'process_message',return_value='Ответ'),patch('speech_service.synthesize_reply',side_effect=ValueError),patch.object(server,'send_task_reply',return_value={'message':{'id':'ok'}}) as deliver:
+        with patch('assistant_app.speech.service.transcribe_task',return_value='Вопрос'),patch.object(server,'process_message',return_value='Ответ'),patch('assistant_app.speech.service.synthesize_reply',side_effect=ValueError),patch.object(server,'send_task_reply',return_value={'message':{'id':'ok'}}) as deliver:
             server.process_next_task()
         self.assertEqual(deliver.call_count,1)
         self.assertTrue(server.task_store().get(task['task_id'])['delivered'])
@@ -64,14 +64,14 @@ class SpeechTests(unittest.TestCase):
         one,_=server.task_service().submit('tg_old','original',42,'telegram',sender_id='other',bot_message_id=1)
         server.complete_task(one,'private reply')
         command,_=server.task_service().submit('tg_speak','/speak',42,'telegram',sender_id='42',bot_message_id=2)
-        with patch('speech_service.synthesize_task') as synthesis,patch.object(server,'send_task_reply',return_value={'message':{'id':'ok'}}):
+        with patch('assistant_app.speech.service.synthesize_task') as synthesis,patch.object(server,'send_task_reply',return_value={'message':{'id':'ok'}}):
             server.process_next_task()
         synthesis.assert_not_called()
         self.assertIn('Нет доступного ответа',server.task_store().get(command['task_id'])['result'])
 
     def test_telegram_download_error_never_exposes_token(self):
         client=TelegramClient('private-token')
-        with patch.object(client,'call',return_value={'file_path':'voice/audio.oga'}),patch('telegram_adapter.requests.get',side_effect=__import__('requests').ConnectionError('private-token')):
+        with patch.object(client,'call',return_value={'file_path':'voice/audio.oga'}),patch('assistant_app.channels.telegram.requests.get',side_effect=__import__('requests').ConnectionError('private-token')):
             with self.assertRaises(TelegramError) as error:client.download_audio('id','unused')
         self.assertNotIn('private-token',str(error.exception))
 

@@ -5,10 +5,10 @@ import os
 import tempfile
 import unittest
 from unittest.mock import patch
-import voice_clone as vc
-import file_tools
-import project_changes
-import code_deploy
+from assistant_app.speech import clone as vc
+from assistant_app.tools import file_tools
+from assistant_app.projects import project_changes
+from assistant_app.operations import code_deploy
 
 
 class VoiceClonePreparationTests(unittest.TestCase):

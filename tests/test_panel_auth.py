@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from panel_auth import PanelAuth
-import server
+from assistant_app.api.auth import PanelAuth
+from assistant_app.core import server
 
 
 class PanelAuthenticationTests(unittest.TestCase):

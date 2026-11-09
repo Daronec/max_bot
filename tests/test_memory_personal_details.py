@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock,patch
-import personal_memory as pm
+from assistant_app.memory import personal as pm
 
 
 class PersonalDetailsTests(unittest.TestCase):
@@ -75,7 +75,7 @@ class PersonalDetailsTests(unittest.TestCase):
         self.assertIn('35 лет',pm.age_reply(own,date(2026,10,31)))
 
     def test_birth_date_and_followup_age_read_memory_without_model(self):
-        from server import execute_with_memory
+        from assistant_app.core.server import execute_with_memory
         self.memory.use_agent = True
         self.memory.agent = Mock()
         self.assertIn('Запомнила', self.turn('Запомни: моя дата рождения — 12 ноября 1990 года')[0])
@@ -90,7 +90,7 @@ class PersonalDetailsTests(unittest.TestCase):
 
         task = {'source': 'max', 'chat_id': '10', 'sender_id': '20', 'task_id': 'read', 'channel_link': 'verified'}
         execute = Mock()
-        with patch('server.personal_memory', self.memory):
+        with patch('assistant_app.core.server.personal_memory', self.memory):
             self.assertIn('12.11.1990', execute_with_memory(task, 'Когда я родился?', execute, {}))
             other = dict(task, sender_id='21')
             self.assertIn('Не нашла', execute_with_memory(other, 'Когда я родился?', execute, {}))

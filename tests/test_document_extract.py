@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 import unittest
-from document_extract import extract
+from assistant_app.knowledge.extract import extract
 
 
 class PDFExtractTests(unittest.TestCase):

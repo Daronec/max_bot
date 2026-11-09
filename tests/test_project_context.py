@@ -2,11 +2,11 @@ import bot_test_support
 import tempfile
 import unittest
 from unittest.mock import patch
-import server
-from execution_context import current_execution
-from project_context import ProjectContext
-from task_store import SQLiteTaskStore
-from task_service import TaskConflict
+from assistant_app.core import server
+from assistant_app.core.execution_context import current_execution
+from assistant_app.projects.project_context import ProjectContext
+from assistant_app.core.task_store import SQLiteTaskStore
+from assistant_app.core.task_service import TaskConflict
 
 
 class ProjectContextTests(unittest.TestCase):

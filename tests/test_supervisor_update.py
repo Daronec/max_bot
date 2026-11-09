@@ -4,20 +4,25 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock,patch
-from supervisor_update import prepare,apply,rollback
+from assistant_app.operations.supervisor_update import prepare,apply,rollback
 
 
 class SupervisorReleaseTests(unittest.TestCase):
     def setUp(self):
         tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup);self.base=Path(tmp.name)
         self.root=self.base/'current';self.root.mkdir();self.source=self.base/'new';self.source.mkdir()
-        for name in ('supervisor.py','server.py','http_api.py','process_manager.py','panel_auth.py'):
+        for name in ('supervisor.py','server.py','assistant_app/paths.py',
+                     'assistant_app/api/auth.py','assistant_app/api/routes.py','assistant_app/api/control.py',
+                     'assistant_app/operations/supervisor.py','assistant_app/operations/process_manager.py',
+                     'assistant_app/operations/diagnostics.py','assistant_app/operations/maintenance.py'):
+            (self.root/name).parent.mkdir(exist_ok=True, parents=True)
+            (self.source/name).parent.mkdir(exist_ok=True, parents=True)
             (self.root/name).write_text('version = 1\n');(self.source/name).write_text('version = 2\n')
         (self.root/'.env').write_text('secret=preserve')
         self.tasks=self.root/'tasks';self.tasks.mkdir()
 
     def ready(self):
-        with patch('supervisor_update.subprocess.run',return_value=Mock(returncode=0)):
+        with patch('assistant_app.operations.supervisor_update.subprocess.run',return_value=Mock(returncode=0)):
             return prepare(self.root,self.source)
 
     def test_prepare_apply_and_verified_rollback_leave_secrets(self):
@@ -38,7 +43,7 @@ class SupervisorReleaseTests(unittest.TestCase):
         self.assertEqual((self.root/'supervisor.py').read_text(),'version = 1\n')
 
     def test_failed_tests_never_produce_ready_release(self):
-        with patch('supervisor_update.subprocess.run',return_value=Mock(returncode=1)):
+        with patch('assistant_app.operations.supervisor_update.subprocess.run',return_value=Mock(returncode=1)):
             with self.assertRaises(ValueError):prepare(self.root,self.source)
         self.assertEqual(list((self.root/'.supervisor_releases').glob('*/release.json')),[])
 

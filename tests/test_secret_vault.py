@@ -3,9 +3,9 @@ import tempfile
 import unittest
 from unittest.mock import Mock
 
-from panel_auth import PanelAuth
-from secret_vault import SecretVault, vault_values
-from supervisor import create_app
+from assistant_app.api.auth import PanelAuth
+from assistant_app.api.secret_vault import SecretVault, vault_values
+from assistant_app.api.control import create_app
 
 
 class SecretVaultTests(unittest.TestCase):

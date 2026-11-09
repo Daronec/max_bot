@@ -4,9 +4,9 @@ import sys
 import unittest
 from unittest.mock import Mock, patch
 import requests
-import intent_router as ir
-import lm_connection as lm
-import task_processor as processor
+from assistant_app.models import router as ir
+from assistant_app.models import gateway as lm
+from assistant_app.core import task_processor as processor
 
 
 class RouterTests(unittest.TestCase):
@@ -111,7 +111,7 @@ class RouterTests(unittest.TestCase):
         fake.AutoTokenizer.from_pretrained.assert_called_once()
 
     def test_logging(self):
-        with self.assertLogs('intent_router', level='INFO') as logs:
+        with self.assertLogs(ir.__name__, level='INFO') as logs:
             self.router().route('analyse data')
         for field in ('message=', 'label=data_analysis', 'score=0.9', 'target=deepseek', 'reason='):
             self.assertIn(field, logs.output[0])

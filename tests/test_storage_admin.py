@@ -3,9 +3,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from knowledge_store import KnowledgeStore
-from storage_admin import restore
-from task_store import SQLiteTaskStore
+from assistant_app.knowledge.index import KnowledgeStore
+from assistant_app.operations.storage_admin import restore
+from assistant_app.core.task_store import SQLiteTaskStore
 
 
 class StorageRecoveryTests(unittest.TestCase):

@@ -6,9 +6,9 @@ import tempfile
 import unittest
 from unittest.mock import Mock,patch
 
-import morning_summary
-import server
-import voice_tools
+from assistant_app.services import morning_summary
+from assistant_app.core import server
+from assistant_app.speech import recognition as voice_tools
 
 
 class VoiceTests(unittest.TestCase):

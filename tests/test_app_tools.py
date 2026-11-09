@@ -3,8 +3,8 @@ import json
 import shlex
 import unittest
 from unittest.mock import patch, MagicMock
-import app_tools
-import task_processor
+from assistant_app.tools import app_tools
+from assistant_app.core import task_processor
 
 
 class AppToolsTests(unittest.TestCase):

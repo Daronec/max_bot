@@ -4,11 +4,11 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-from assistant_settings import AssistantSettings
-import command_tools
-from execution_context import ExecutionContext, ExecutionStopped, check_execution, execution_session
-import server
-from task_store import SQLiteTaskStore, TaskConflict
+from assistant_app.core.assistant_settings import AssistantSettings
+from assistant_app.tools import command_tools
+from assistant_app.core.execution_context import ExecutionContext, ExecutionStopped, check_execution, execution_session
+from assistant_app.core import server
+from assistant_app.core.task_store import SQLiteTaskStore, TaskConflict
 
 
 class ExecutionControlTests(unittest.TestCase):

@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
-from notification_forwarder import NotificationForwarder, notification_text
+from assistant_app.services.notification_forwarder import NotificationForwarder, notification_text
 
 
 class NotificationTests(unittest.TestCase):

@@ -6,7 +6,7 @@ import time
 from urllib.parse import urlsplit
 root=Path(__file__).resolve().parents[1];sys.path.insert(0,str(root))
 import requests
-from config import LOCAL_LM_BASE_URL,LOCAL_LM_MODEL,LOCAL_LM_API_KEY
+from assistant_app.config import LOCAL_LM_BASE_URL,LOCAL_LM_MODEL,LOCAL_LM_API_KEY
 parsed=urlsplit(LOCAL_LM_BASE_URL)
 if parsed.hostname not in ('127.0.0.1','localhost','::1') or parsed.scheme!='http':raise SystemExit('Refusing a non-local model endpoint')
 headers={'Authorization':'Bearer '+LOCAL_LM_API_KEY} if LOCAL_LM_API_KEY else {}

@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from diagnostics import log_tail
+from assistant_app.operations.diagnostics import log_tail
 
 
 class DiagnosticsTests(unittest.TestCase):

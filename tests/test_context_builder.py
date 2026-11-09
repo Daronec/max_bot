@@ -1,7 +1,7 @@
 import tempfile
 import unittest
-from context_builder import ContextBuilder
-from task_store import SQLiteTaskStore
+from assistant_app.core.context_builder import ContextBuilder
+from assistant_app.core.task_store import SQLiteTaskStore
 
 
 class ContextTests(unittest.TestCase):

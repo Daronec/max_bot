@@ -1,13 +1,13 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import tempfile
 import threading
 import time
 import unittest
 from unittest.mock import Mock, patch
 
-from daily_maintenance import STATE, ZONE, tick
-from task_service import TaskConflict
-from task_store import SQLiteTaskStore
+from assistant_app.operations.maintenance import STATE, ZONE, tick
+from assistant_app.core.task_service import TaskConflict
+from assistant_app.core.task_store import SQLiteTaskStore
 
 
 class DailyMaintenanceTests(unittest.TestCase):
@@ -31,7 +31,7 @@ class DailyMaintenanceTests(unittest.TestCase):
         self.store.save(task)
         return task
 
-    @patch('daily_maintenance.requests.get')
+    @patch('assistant_app.operations.maintenance.requests.get')
     def test_repairs_and_restarts_once_without_copying_dialogues(self, get):
         task = self.task('failed', error='Нет соединения с сервером модели', routing={'target': 'qwen'})
         get.return_value.json.return_value = {'ready': True}
@@ -62,3 +62,18 @@ class DailyMaintenanceTests(unittest.TestCase):
         self.assertIsNone(self.store.claim(queued['task_id'], time.time()))
         with self.assertRaises(TaskConflict):
             self.store.save(dict(queued, _revision=0, task_id='legacy-send', status='sending'))
+
+    def test_schedule_runs_at_four_moscow_once_per_day_across_restart(self):
+        boundary = datetime(2026, 11, 9, 4, tzinfo=ZONE)
+        def run(at):
+            return tick(self.store, self.manager, self.lock, 'http://localhost:5001',
+                        self.recover, now=at.timestamp())
+
+        self.assertIsNone(run(boundary - timedelta(seconds=1)))
+        self.assertIsNone(self.store.runtime(STATE))
+        self.assertEqual(run(boundary)['day'], '2026-11-09')
+        self.store = SQLiteTaskStore(self.store.directory)
+        self.assertIsNone(run(boundary + timedelta(hours=10)))
+        self.assertIsNone(run(boundary + timedelta(days=1, seconds=-1)))
+        self.assertEqual(run(boundary + timedelta(days=1))['day'], '2026-11-10')
+        self.manager.stop.assert_not_called()

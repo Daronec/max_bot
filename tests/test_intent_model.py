@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from intent_router import IntentClassifier, IntentRouter, DeepSeekAvailability
+from assistant_app.models.router import IntentClassifier, IntentRouter, DeepSeekAvailability
 
 
 @unittest.skipUnless(os.environ.get('RUN_INTENT_MODEL_TESTS') == '1', 'requires cached mDeBERTa weights')

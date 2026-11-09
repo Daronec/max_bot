@@ -5,15 +5,15 @@ import unittest
 from unittest.mock import patch
 import time
 import os
-from execution_context import ExecutionContext, execution_session, ExecutionStopped
-from tool_registry import invoke, catalogue
-from command_tools import capture_command_actions
-from file_tools import capture_file_actions
+from assistant_app.core.execution_context import ExecutionContext, execution_session, ExecutionStopped
+from assistant_app.tools.tool_registry import invoke, catalogue
+from assistant_app.tools.command_tools import capture_command_actions
+from assistant_app.tools.file_tools import capture_file_actions
 
 
 class ToolRegistryTests(unittest.TestCase):
     def test_permissions_and_schema_checked_before_dispatch(self):
-        with patch('command_tools.run_command') as command:
+        with patch('assistant_app.tools.command_tools.run_command') as command:
             denied=invoke('run_command',{'command':'echo no'},granted_names={'run_command'})
             self.assertIn('error',denied);command.assert_not_called()
             for args in ({'command':1},{'command':'echo','unknown':True},{'command':'echo','timeout':True}):

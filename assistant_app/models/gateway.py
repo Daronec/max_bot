@@ -1,0 +1,295 @@
+"""Send model requests and recover or fail over to the configured local server."""
+from pathlib import Path
+from contextvars import ContextVar
+from functools import wraps
+import logging
+from contextlib import contextmanager
+import subprocess
+import threading
+import time
+from urllib.parse import urlsplit, urlunsplit
+
+import requests
+from assistant_app.core.execution_context import check_execution, current_execution
+
+from assistant_app.config import LM_AUTO_START, LMS_CLI, LMS_START_TIMEOUT, LM_BASE_URL
+from assistant_app.config import (LM_PROVIDER, LM_FALLBACK_ENABLED, LOCAL_LM_BASE_URL, LOCAL_LM_MODEL,
+                    LOCAL_LM_API_KEY, DEEPSEEK_REQUEST_TIMEOUT, LM_FALLBACK_COOLDOWN)
+
+from . import router
+from .stream import consume
+
+_lock = threading.Lock()
+_last_attempt = None
+
+
+class ModelServerUnavailable(RuntimeError):
+    pass
+
+
+def _local_target(url):
+    target = urlsplit(url)
+    configured = urlsplit(LM_BASE_URL)
+    if target.hostname in ('127.0.0.1', 'localhost') and target.port == urlsplit(LOCAL_LM_BASE_URL).port:
+        configured = urlsplit(LOCAL_LM_BASE_URL)
+    if (target.scheme != 'http' or target.hostname not in ('127.0.0.1', 'localhost')
+            or target.hostname != configured.hostname or target.port != configured.port):
+        return None
+    return target
+
+
+def _ready(target):
+    root = urlunsplit((target.scheme, target.netloc, '/v1/models', '', ''))
+    try:
+        # Authentication errors also prove that the listener is running; let the actual request report them.
+        return requests.get(root, timeout=2).status_code in (200, 401, 403)
+    except requests.RequestException:
+        return False
+
+
+def recover_local_server(url):
+    global _last_attempt
+    target = _local_target(url)
+    if not LM_AUTO_START or target is None:
+        return False
+    with _lock:
+        if _ready(target):
+            return True
+        if _last_attempt is not None and time.monotonic() - _last_attempt < 30:
+            raise ModelServerUnavailable('Локальный сервер модели ещё недоступен; задание сохранено, повторю подключение позже.')
+        _last_attempt = time.monotonic()
+        cli = Path(LMS_CLI).expanduser()
+        if not cli.is_file():
+            raise ModelServerUnavailable('Не найден lms для автозапуска. Откройте LM Studio/Bionic и включите локальный сервер.')
+        try:
+            result = subprocess.run([str(cli), 'server', 'start', '--port', str(target.port or 1234),
+                                     '--bind', '127.0.0.1'], timeout=LMS_START_TIMEOUT,
+                                    stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                    start_new_session=True)
+            success = result.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            success = False
+        deadline = time.monotonic() + (5 if success else 1)
+        while True:
+            if _ready(target):
+                return True
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.25)
+        raise ModelServerUnavailable('На порту ' + str(target.port or 1234) +
+                                     ' нет сервера LM Studio, автозапуск не удался. '
+                                     'Откройте LM Studio/Bionic и включите сервер. Задание сохранено.')
+
+
+def _request_unobserved(method, url, **kwargs):
+    check_execution()
+    deadline = current_execution().deadline
+    if deadline is not None:
+        remaining = max(.1, deadline - time.monotonic())
+        timeout = kwargs.get('timeout', remaining)
+        kwargs['timeout'] = tuple(min(value, remaining) for value in timeout) if isinstance(timeout, tuple) else min(timeout, remaining)
+    try:
+        response = getattr(requests, method)(url, **kwargs)
+        check_execution()
+        return consume(response) if kwargs.get('stream') else response
+    except requests.ConnectionError as error:
+        refused = 'connection refused' in str(error).lower()
+        if refused and recover_local_server(url):
+            check_execution()
+            response = getattr(requests, method)(url, **kwargs)
+            check_execution()
+            return consume(response) if kwargs.get('stream') else response
+        raise
+
+
+def _request(method, url, **kwargs):
+    context = current_execution()
+    if method == 'post' and context.progress_observer and 'messages' in (kwargs.get('json') or {}):
+        kwargs['json']['stream'] = True
+        kwargs['stream'] = True
+        context.progress_observer('')
+    reservation = {}
+    backend = current_backend() or {}
+    if backend.get('provider') == 'registered':
+        kwargs['timeout'] = (10, backend.get('timeout_seconds',120))
+    if method == 'post' and backend.get('provider') == 'registered' and context.budget_reserver:
+        reservation = context.budget_reserver(backend, kwargs.get('json') or {})
+        # Registered endpoints must not redirect prompts or credentials elsewhere.
+        kwargs['allow_redirects'] = False
+    observer = current_execution().model_observer
+    if observer is None or method != 'post':
+        return _request_unobserved(method, url, **kwargs)
+    started = time.monotonic()
+    response = None
+    try:
+        response = _request_unobserved(method, url, **kwargs)
+        return response
+    finally:
+        usage = {}
+        if response is not None:
+            try:
+                payload = response.json()
+                raw = payload.get('usage', {}) if isinstance(payload, dict) else {}
+                usage = {key:value for key,value in raw.items() if key in
+                         ('prompt_tokens', 'completion_tokens', 'total_tokens')
+                         and isinstance(value, int) and not isinstance(value, bool) and value >= 0}
+            except (ValueError, TypeError, AttributeError):
+                pass
+        status = getattr(response, 'status_code', None)
+        observer(dict(**reservation, model=(kwargs.get('json') or {}).get('model'),
+                      backend='local' if urlsplit(url).hostname in ('127.0.0.1','localhost','::1') else 'remote',
+                      duration_seconds=round(time.monotonic() - started, 3),
+                      http_status=status if isinstance(status, int) else None, usage=usage))
+
+
+logger = logging.getLogger(__name__)
+_selected_backend = ContextVar('selected_backend', default=None)
+
+
+def current_backend():
+    return _selected_backend.get()
+
+
+@contextmanager
+def intent_session(decision):
+    from assistant_app.config import (DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, DEEPSEEK_API_KEY,
+                        LOCAL_LM_BASE_URL, LOCAL_LM_MODEL, LOCAL_LM_API_KEY)
+    remote = decision.target == 'deepseek'
+    backend = {'provider': 'deepseek' if remote else 'lmstudio',
+               'base_url': DEEPSEEK_BASE_URL if remote else LOCAL_LM_BASE_URL,
+               'model': current_execution().model_overrides.get('remote_model' if remote else 'local_model', DEEPSEEK_MODEL if remote else LOCAL_LM_MODEL),
+               'api_key': DEEPSEEK_API_KEY if remote else LOCAL_LM_API_KEY}
+    if current_execution().selected_backend and (current_execution().selected_backend['local'] or not current_execution().local_only and current_execution().remote_enabled and decision.reason not in ('privacy_policy', 'personal_memory_local')):
+        backend = current_execution().selected_backend
+    token = _selected_backend.set(backend)
+    local_token = _local_session.set(False)
+    with _route_lock:
+        _route.update(last_provider=backend['provider'], fallback_reason=decision.reason)
+    try:
+        yield
+    finally:
+        _local_session.reset(local_token)
+        _selected_backend.reset(token)
+
+
+_local_session = ContextVar('local_model_session', default=False)
+_retry_deepseek_at = 0.0
+_route_lock = threading.Lock()
+_route = {'last_provider': None, 'fallback_reason': None}
+
+
+def model_session(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        token = _local_session.set(False)
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _local_session.reset(token)
+    return wrapped
+
+
+def routing_status():
+    availability = router.deepseek_availability
+    with _route_lock:
+        return {**_route, 'fallback_enabled': LM_FALLBACK_ENABLED,
+                'deepseek_enabled': router.DEEPSEEK_ENABLED,
+                'deepseek_available': router.DEEPSEEK_ENABLED and availability.available(),
+                'deepseek_retry_in_seconds': availability.retry_in_seconds(),
+                'local_model': LOCAL_LM_MODEL}
+
+
+def _fallback(kwargs):
+    # Preserve conversation and tool receipts, never restart the original task.
+    local = dict(kwargs)
+    payload = dict(local.get('json') or {})
+    payload['model'] = current_execution().model_overrides.get('local_model', LOCAL_LM_MODEL)
+    payload.pop('thinking', None)
+    payload['reasoning_effort'] = 'none'
+    payload['messages'] = [{k:v for k,v in message.items() if k != 'reasoning_content'}
+                           for message in payload.get('messages', [])]
+    local['json'] = payload
+    headers = {k:v for k,v in local.get('headers', {}).items() if k.lower() != 'authorization'}
+    if LOCAL_LM_API_KEY: headers['Authorization'] = 'Bearer ' + LOCAL_LM_API_KEY
+    local['headers'] = headers
+    # The local model can need longer than the remote failover deadline.
+    from assistant_app.config import LM_TIMEOUT
+    local['timeout'] = (10, LM_TIMEOUT)
+    _local_session.set(True)
+    with _route_lock: _route['last_provider'] = 'lmstudio'
+    token = _selected_backend.set(dict(provider='lmstudio',base_url=LOCAL_LM_BASE_URL,model=payload['model'],api_key=LOCAL_LM_API_KEY))
+    try:
+        return _request('post', LOCAL_LM_BASE_URL + '/chat/completions', **local)
+    finally:
+        _selected_backend.reset(token)
+
+
+def model_post(url, **kwargs):
+    global _retry_deepseek_at
+    backend = current_backend()
+    if backend is not None:
+        if backend.get('provider') == 'registered':
+            if _local_session.get():
+                return _fallback(kwargs)
+            try:
+                response = _request('post', url, **kwargs)
+                response.raise_for_status()
+                return response
+            except requests.RequestException:
+                if current_execution().backend_failure:
+                    current_execution().backend_failure(backend)
+                with _route_lock:
+                    _route.update(fallback_reason='registered_model_error', last_provider='lmstudio')
+                return _fallback(kwargs)
+        # Actual API failure handling stays next to the request. Continue the same
+        # conversation on Qwen, preserving tool receipts and avoiding replay.
+        if backend['provider'] != 'deepseek':
+            return _request('post', url, **kwargs)
+        availability = router.deepseek_availability
+        if _local_session.get() or not availability.available():
+            return _fallback(kwargs)
+        primary = dict(kwargs)
+        primary['timeout'] = (10, DEEPSEEK_REQUEST_TIMEOUT)
+        try:
+            response = _request('post', url, **primary)
+            response.raise_for_status()
+            if isinstance(response.status_code, int) and response.status_code >= 400:
+                raise requests.HTTPError(response=response)
+        except requests.RequestException as error:
+            availability.mark_unavailable()
+            with _route_lock:
+                _route.update(fallback_reason='deepseek_error', last_provider='lmstudio')
+            logger.warning('intent_route target=qwen reason=deepseek_error error=%s', type(error).__name__)
+            return _fallback(kwargs)
+        availability.mark_available()
+        return response
+    remote = LM_PROVIDER == 'deepseek' and urlsplit(url).hostname == 'api.deepseek.com'
+    if not remote or not LM_FALLBACK_ENABLED:
+        return _request('post', url, **kwargs)
+    with _route_lock:
+        cooling = time.monotonic() < _retry_deepseek_at
+    if _local_session.get() or cooling:
+        return _fallback(kwargs)
+    primary = dict(kwargs)
+    primary['timeout'] = (10, DEEPSEEK_REQUEST_TIMEOUT)
+    reason = None
+    try:
+        response = _request('post', url, **primary)
+        status = response.status_code
+        if isinstance(status, int) and (status in (401, 402, 403, 408, 429) or status >= 500):
+            reason = 'HTTP ' + str(status)
+        else:
+            with _route_lock:
+                _route.update(last_provider='deepseek', fallback_reason=None)
+            return response
+    except (requests.ConnectionError, requests.Timeout):
+        reason = 'timeout_or_connection_error'
+    with _route_lock:
+        _retry_deepseek_at = time.monotonic() + LM_FALLBACK_COOLDOWN
+        _route.update(fallback_reason=reason)
+    return _fallback(kwargs)
+
+
+
+def model_get(url, **kwargs):
+    return _request('get', url, **kwargs)

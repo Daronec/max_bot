@@ -6,8 +6,8 @@ import wave
 from pathlib import Path
 from unittest.mock import patch
 
-import server
-import voice_clone as vc
+from assistant_app.core import server
+from assistant_app.speech import clone as vc
 
 
 class VoicePresetTests(unittest.TestCase):

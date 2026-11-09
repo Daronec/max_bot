@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from project_service import ProjectService
+from assistant_app.projects.project_service import ProjectService
 
 
 class PanelProjectTests(unittest.TestCase):

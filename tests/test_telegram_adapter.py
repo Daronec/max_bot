@@ -6,10 +6,10 @@ import unittest
 from unittest.mock import Mock, patch
 
 import requests
-import server
-from task_service import TaskService
-from task_store import SQLiteTaskStore
-from telegram_adapter import TelegramAdapter, TelegramClient, TelegramError
+from assistant_app.core import server
+from assistant_app.core.task_service import TaskService
+from assistant_app.core.task_store import SQLiteTaskStore
+from assistant_app.channels.telegram import TelegramAdapter, TelegramClient, TelegramError
 
 
 def update(ident=1, sender=42, chat=123456789, text='Привет'):
@@ -59,13 +59,13 @@ class TelegramTests(unittest.TestCase):
 
     def test_request_contract_and_secret_redaction(self):
         client = TelegramClient('private-token')
-        with patch('telegram_adapter.requests.post') as post:
+        with patch('assistant_app.channels.telegram.requests.post') as post:
             post.return_value.status_code = 200
             post.return_value.json.return_value = {'ok':True,'result':{'message_id':3}}
             client.send(5, 'Ответ', 8)
             self.assertEqual(post.call_args.kwargs['json']['reply_parameters']['message_id'], 8)
             self.assertNotIn('parse_mode', post.call_args.kwargs['json'])
-        with patch('telegram_adapter.requests.post', side_effect=requests.ConnectionError('https://botprivate-token')):
+        with patch('assistant_app.channels.telegram.requests.post', side_effect=requests.ConnectionError('https://botprivate-token')):
             with self.assertRaises(TelegramError) as raised:
                 client.updates(0)
             self.assertNotIn('private-token', str(raised.exception))
@@ -75,7 +75,7 @@ class TelegramTests(unittest.TestCase):
             self.adapter.handle(update(text='Выполни команду pwd'))
             task = next(iter(self.tasks.values()))
             with patch.object(server, 'process_message', return_value='Ответ') as model, \
-                    patch('telegram_adapter.TelegramClient.send', return_value={'message_id':99}) as send, \
+                    patch('assistant_app.channels.telegram.TelegramClient.send', return_value={'message_id':99}) as send, \
                     patch.object(server.bot_client, 'send_message') as max_send:
                 server.process_next_task()
             model.assert_called_once_with('Выполни команду pwd')

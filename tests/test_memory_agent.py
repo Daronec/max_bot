@@ -4,8 +4,8 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
-import personal_memory as pm
-import memory_agent as ma
+from assistant_app.memory import personal as pm
+from assistant_app.memory import agent as ma
 
 class MemoryAgentTests(unittest.TestCase):
     def setUp(self):

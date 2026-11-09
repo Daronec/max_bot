@@ -4,9 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import bot_client
-import bot_client_v2
-import server
+from assistant_app.channels import max_cli, max_client
+from assistant_app.core import server
 
 
 def msg(mid, text, reply=None, chat=123, bot=False):
@@ -18,15 +17,15 @@ def msg(mid, text, reply=None, chat=123, bot=False):
 
 class ClientTests(unittest.TestCase):
     def setUp(self):
-        self.client = bot_client.MAXBotClient('test-token', 123)
+        self.client = max_client.MAXBotClient('test-token', 123)
 
     def test_api_send_contract(self):
-        with patch('bot_client.requests.request') as call:
+        with patch('assistant_app.channels.max_client.requests.request') as call:
             call.return_value.json.return_value = {'message': msg('opaque-id', 'task')}
             result = self.client.send_task('task', 'demo.txt')
             self.assertEqual(result, 'opaque-id')
             args, kw = call.call_args
-            self.assertEqual(args, ('POST', bot_client.API_BASE_URL + '/messages'))
+            self.assertEqual(args, ('POST', max_client.API_BASE_URL + '/messages'))
             self.assertEqual(kw['headers']['Authorization'], 'test-token')
             self.assertEqual(kw['params'], {'chat_id': 123})
             self.assertNotIn('token', kw['params'])
@@ -57,8 +56,8 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(self.client._strip_task('📝 ЗАДАЧА\nтекст\nещё текст'), 'текст\nещё текст')
 
     def test_v2_save_dict_and_list(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.object(bot_client_v2, 'BASE_DIR', Path(tmp)):
-            client = bot_client_v2.MAXBotClientV2('test', chat_id=123)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(max_cli, 'BASE_DIR', Path(tmp)):
+            client = max_cli.MAXBotClientV2('test', chat_id=123)
             client.save_message_file('demo', {'text': 'one'})
             client.save_message_file('demo', [{'text': 'two'}])
             self.assertEqual(len(list((Path(tmp) / 'tasks').glob('*.txt'))), 2)

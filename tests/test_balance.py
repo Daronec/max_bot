@@ -2,8 +2,8 @@ import bot_test_support  # Load synthetic configuration before application impor
 import unittest
 from unittest.mock import Mock,patch
 import requests
-import deepseek_balance as balance
-import server
+from assistant_app.models import deepseek_balance as balance
+from assistant_app.core import server
 
 
 class BalanceTests(unittest.TestCase):

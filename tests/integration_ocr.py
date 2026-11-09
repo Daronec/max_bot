@@ -1,5 +1,6 @@
 """Local Apple Vision OCR check on a synthetic raster PDF, no user documents."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -32,4 +33,8 @@ with tempfile.TemporaryDirectory(prefix='assistant-ocr-test-') as directory:
  payload=json.loads(result.stdout)
  assert result.returncode==0,(payload,result.stderr)
  assert 'HELLO' in payload['text'].upper(),payload
- print(json.dumps(dict(result='passed',engine=payload['engine'],checks=['raster_pdf','local_recognition','page_provenance'])))
+ extraction=subprocess.run([sys.executable,'-m','assistant_app.knowledge.extract',str(path)],
+     cwd=root,env=dict(os.environ,RAG_OCR_ENABLED='1'),capture_output=True,text=True,timeout=35)
+ assert extraction.returncode==0,extraction.stderr
+ assert 'HELLO' in json.loads(extraction.stdout)['text'].upper()
+ print(json.dumps(dict(result='passed',engine=payload['engine'],checks=['raster_pdf','local_recognition','page_provenance','packaged_extractor'])))

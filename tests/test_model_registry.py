@@ -3,13 +3,13 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-import lm_connection
-import server
-import task_processor
-from execution_context import ExecutionContext, execution_session
-from model_registry import ModelRegistry, ModelPolicyError
-from task_store import SQLiteTaskStore
-from task_service import TaskConflict
+from assistant_app.models import gateway as lm_connection
+from assistant_app.core import server
+from assistant_app.core import task_processor
+from assistant_app.core.execution_context import ExecutionContext, execution_session
+from assistant_app.models.registry import ModelRegistry, ModelPolicyError
+from assistant_app.core.task_store import SQLiteTaskStore
+from assistant_app.core.task_service import TaskConflict
 
 
 class RegistryTests(unittest.TestCase):

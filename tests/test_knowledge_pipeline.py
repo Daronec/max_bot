@@ -2,9 +2,9 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from knowledge_pipeline import KnowledgePipeline
-from knowledge_store import KnowledgeStore
-from task_store import SQLiteTaskStore
+from assistant_app.knowledge.pipeline import KnowledgePipeline
+from assistant_app.knowledge.index import KnowledgeStore
+from assistant_app.core.task_store import SQLiteTaskStore
 
 
 class PipelineTests(unittest.TestCase):

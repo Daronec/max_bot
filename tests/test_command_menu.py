@@ -4,11 +4,11 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
-import bot_client
-import command_menu as menu
-import server
-from personal_memory import personal_memory
-from project_changes import project_changes
+from assistant_app.channels import max_client
+from assistant_app.channels import max_menu as menu
+from assistant_app.core import server
+from assistant_app.memory.personal import personal_memory
+from assistant_app.projects.project_changes import project_changes
 from test_bot import msg
 
 
@@ -104,7 +104,7 @@ class CommandMenuTests(unittest.TestCase):
         self.assertEqual(result,'reminders');memory.assert_not_called()
 
     def test_api_attachment_callback_and_subscription_contracts(self):
-        client=bot_client.MAXBotClient('test-token')
+        client=max_client.MAXBotClient('test-token')
         attachments=[{'type':'inline_keyboard','payload':{'buttons':[[{'type':'callback','text':'Menu','payload':'menu:help'}]]}}]
         with patch.object(client,'_request',return_value={}) as request:
             client.send_message(123,'menu',attachments=attachments)

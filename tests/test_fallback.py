@@ -2,8 +2,8 @@ import bot_test_support  # Load synthetic configuration before application impor
 import unittest
 from unittest.mock import Mock,patch
 import requests
-import lm_connection as lm
-from intent_router import RouteDecision, DeepSeekAvailability
+from assistant_app.models import gateway as lm
+from assistant_app.models.router import RouteDecision, DeepSeekAvailability
 
 
 class FallbackTests(unittest.TestCase):
@@ -58,12 +58,13 @@ class FallbackTests(unittest.TestCase):
             self.assertEqual(request.call_count,2)
 
     def test_failure_after_command_continues_without_second_execution(self):
-        import task_processor,command_tools
+        from assistant_app.core import task_processor
+        from assistant_app.tools import command_tools
         first=Mock(status_code=200)
         first.json.return_value={'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'cmd','function':{'name':'run_command','arguments':'{"command":"pwd"}'}}]}}]}
         last=Mock(status_code=200)
         last.json.return_value={'choices':[{'message':{'content':'/project'}}]}
-        with patch.object(task_processor.intent_router, 'route', return_value=RouteDecision('deepseek', 'web_search', .9, 'test')),patch('intent_router.deepseek_availability', DeepSeekAvailability(True)),patch.object(lm,'_request',side_effect=[first,Mock(status_code=402),last]) as request,patch.object(command_tools,'run_command',return_value={'exit_code':0,'stdout':'/project','stderr':''}) as command:
+        with patch.object(task_processor.intent_router, 'route', return_value=RouteDecision('deepseek', 'web_search', .9, 'test')),patch('assistant_app.models.router.deepseek_availability', DeepSeekAvailability(True)),patch.object(lm,'_request',side_effect=[first,Mock(status_code=402),last]) as request,patch.object(command_tools,'run_command',return_value={'exit_code':0,'stdout':'/project','stderr':''}) as command:
             self.assertEqual(task_processor.process_message('Выполни команду pwd',allow_commands=True),'/project')
             command.assert_called_once_with(command='pwd')
             history=request.call_args.kwargs['json']['messages']

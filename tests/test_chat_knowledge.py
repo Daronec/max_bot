@@ -3,11 +3,12 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-import server
-import task_processor
-from execution_context import ExecutionContext, current_execution, execution_session
-from knowledge_store import KnowledgeStore, LocalEmbeddings
-from task_store import SQLiteTaskStore, TaskConflict
+from assistant_app.core import server
+from assistant_app.core import task_processor
+from assistant_app.core.execution_context import ExecutionContext, current_execution, execution_session
+from assistant_app.knowledge.embeddings import LocalEmbeddings
+from assistant_app.knowledge.index import KnowledgeStore
+from assistant_app.core.task_store import SQLiteTaskStore, TaskConflict
 
 
 class KnowledgeTests(unittest.TestCase):

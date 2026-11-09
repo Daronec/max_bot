@@ -5,11 +5,11 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import server
-from execution_context import current_execution
-from identity_service import IdentityService
-from personal_memory import Fact, MemoryStore, PersonalMemory
-from task_store import SQLiteTaskStore
+from assistant_app.core import server
+from assistant_app.core.execution_context import current_execution
+from assistant_app.channels.identities import IdentityService
+from assistant_app.memory.personal import Fact, MemoryStore, PersonalMemory
+from assistant_app.core.task_store import SQLiteTaskStore
 
 
 class IdentityTests(unittest.TestCase):

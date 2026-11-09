@@ -3,10 +3,10 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from data_admin import delete_conversation,retention_candidates
-from storage_admin import restore
-from task_store import SQLiteTaskStore
-from task_service import TaskConflict
+from assistant_app.operations.data_admin import delete_conversation,retention_candidates
+from assistant_app.operations.storage_admin import restore
+from assistant_app.core.task_store import SQLiteTaskStore
+from assistant_app.core.task_service import TaskConflict
 
 
 class DataAdminTests(unittest.TestCase):

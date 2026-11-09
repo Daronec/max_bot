@@ -9,16 +9,19 @@ import requests
 import logging
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 from werkzeug.serving import make_server
-from panel_auth import PanelAuth
-from process_manager import ProcessManager
-from supervisor import create_app
-from task_store import SQLiteTaskStore
+from assistant_app.api.auth import PanelAuth
+from assistant_app.operations.process_manager import ProcessManager
+from assistant_app.api.control import create_app
+from assistant_app.core.task_store import SQLiteTaskStore
 calls=[]
 class Model(BaseHTTPRequestHandler):
  def log_message(self,*args):pass
  def do_POST(self):
   payload=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
   calls.append(payload)
+  if payload.get('model') == 'smoke-unavailable':
+   self.send_error(503)
+   return
   if payload.get('stream'):
    self.send_response(200);self.send_header('Content-Type','text/event-stream');self.end_headers()
    for delta in ({'reasoning_content':'DO_NOT_EXPOSE_REASONING'},{'content':'Код проекта: '},{'content':'Сапфир.'}):
@@ -64,6 +67,10 @@ with tempfile.TemporaryDirectory() as temporary:
   created=api('/api/chat','POST',{'message':'Какой код проекта?'})
   answer=wait_for(lambda:(lambda result:result if result['status']=='completed' else None)(api('/api/result?task_id='+created['task_id'])))
   assert 'Сапфир' in answer['result'] and answer['sources'][0]['document_id']==document['id']
+  reference=answer['sources'][0]
+  assert reference['citation'] in answer['result'] and reference['url'] in answer['result']
+  assert 'строки' in answer['result'] and 'content' not in reference
+  assert api(reference['url'])['document']['id']==document['id']
   assert 'Недоверенные выдержки' in calls[0]['messages'][-2]['content']
   old_pid=manager.status()['pid'];manager.process.kill()
   wait_for(lambda:manager.status()['restarts']==1)
@@ -76,22 +83,39 @@ with tempfile.TemporaryDirectory() as temporary:
   second=api('/api/chat','POST',{'message':'Повтори ответ','conversation_id':created['conversation_id']})
   wait_for(lambda:api('/api/result?task_id='+second['task_id'])['status']=='completed')
   assert any(message['role']=='assistant' for message in calls[-1]['messages'])
-  registry_model=dict(id='integration',model='smoke-local',base_url=model_url,local=True,tools=True,context_tokens=32768,output_tokens=1024)
-  api('/api/models','POST',{'version':0,'models':[registry_model]})
+  registry_model=dict(id='integration',model='smoke-local',base_url=model_url,local=True,tools=True,context_tokens=32768,output_tokens=1024,intents=['default'])
+  unavailable_model=dict(registry_model,id='unavailable',model='smoke-unavailable',intents=[])
+  api('/api/models','POST',{'version':0,'models':[registry_model,unavailable_model]})
   registered=api('/api/chat','POST',{'message':'Проверка реестра','model_target':'model:integration','use_knowledge':False})
   wait_for(lambda:api('/api/result?task_id='+registered['task_id'])['status']=='completed')
   task=SQLiteTaskStore(d/'tasks').get(registered['task_id'])
   assert task['routing']['target']=='model:integration' and 'DO_NOT_EXPOSE_REASONING' not in json.dumps(task)
+  automatic=api('/api/chat','POST',{'message':'Проверка автовыбора','use_knowledge':False})
+  wait_for(lambda:api('/api/result?task_id='+automatic['task_id'])['status']=='completed')
+  auto_task=SQLiteTaskStore(d/'tasks').get(automatic['task_id'])
+  assert auto_task['routing']['target']=='model:integration' and auto_task['routing']['reason']=='registered_auto'
+  request_index=len(calls)
+  failing=api('/api/chat','POST',{'message':'Проверка резерва','model_target':'model:unavailable','use_knowledge':False})
+  recovered=wait_for(lambda:(lambda result:result if result['status']=='completed' else None)(api('/api/result?task_id='+failing['task_id'])))
+  recovered_task=SQLiteTaskStore(d/'tasks').get(failing['task_id'])
+  assert 'Сапфир' in recovered['result'] and recovered_task['routing']['fallback_target']=='qwen'
+  assert recovered_task['routing']['fallback_reason']=='registered_model_error'
+  assert [call['model'] for call in calls[request_index:]]==['smoke-unavailable','smoke-local']
+  assert calls[request_index]['messages']==calls[request_index+1]['messages']
+  assert next(model for model in api('/api/models')['availability'] if model['id']=='unavailable')['cooldown_seconds']>0
   project=api('/api/projects','POST',{'title':'Изолированный проект','notes':'Рабочий маркер: Гелиос'})['id']
   api('/api/knowledge','POST',{'title':'isolated.md','text':'Секрет проекта: Гелиос','project_id':project})
   project_chat=api('/api/chat','POST',{'message':'Гелиос','project_id':project})
-  wait_for(lambda:api('/api/result?task_id='+project_chat['task_id'])['status']=='completed')
+  project_answer=wait_for(lambda:(lambda result:result if result['status']=='completed' else None)(api('/api/result?task_id='+project_chat['task_id'])))
+  project_source=project_answer['sources'][0]
+  assert project_source['url'].endswith('?project_id='+project)
+  assert api(project_source['url'])['document']['id']==project_source['document_id']
   assert 'Гелиос' in json.dumps(calls[-1]['messages'],ensure_ascii=False)
   schedule=api('/api/automations','POST',{'action':'create','config':{'title':'Обзор','prompt':'Гелиос','kind':'interval','interval':60,'missed':'once','project_id':project}})['id']
   with SQLiteTaskStore(d/'tasks').connect() as db:db.execute('UPDATE automations SET next_due=? WHERE id=?',(time.time(),schedule))
   scheduled=wait_for(lambda:next((task for task in SQLiteTaskStore(d/'tasks').all() if task.get('automation_id')==schedule and task['status']=='completed'),None))
   assert scheduled['project_id']==project
   SQLiteTaskStore(d/'tasks').backup(d/'backup.sqlite3')
-  print(json.dumps({'result':'passed','checks':['local_chat','streaming_without_reasoning','registered_model','project_isolation','durable_schedule','rag_sources','worker_process','api_crash_restart','history_persistence','independent_control_plane','stop_start','database_backup'],'model_calls':len(calls)}))
+  print(json.dumps({'result':'passed','checks':['local_chat','streaming_without_reasoning','registered_model','automatic_model_selection','registered_model_fallback','project_isolation','durable_schedule','rag_sources','worker_process','api_crash_restart','history_persistence','independent_control_plane','stop_start','database_backup'],'model_calls':len(calls)}))
  finally:
   manager.stop();panel.shutdown();model.shutdown()

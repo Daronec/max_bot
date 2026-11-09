@@ -5,11 +5,11 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-import assistant_identity as identity
-import server
-import task_processor as processor
-import voice_tools
-from intent_router import RouteDecision
+from assistant_app.core import assistant_identity as identity
+from assistant_app.core import server
+from assistant_app.core import task_processor as processor
+from assistant_app.speech import recognition as voice_tools
+from assistant_app.models.router import RouteDecision
 
 
 class IdentityTests(unittest.TestCase):

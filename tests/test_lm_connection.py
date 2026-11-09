@@ -2,7 +2,7 @@ import bot_test_support  # Load synthetic configuration before application impor
 import unittest
 from unittest.mock import MagicMock, patch
 import requests
-import lm_connection
+from assistant_app.models import gateway as lm_connection
 
 
 class ConnectionTests(unittest.TestCase):

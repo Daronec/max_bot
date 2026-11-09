@@ -2,14 +2,14 @@ import bot_test_support  # Load synthetic configuration before application impor
 import unittest
 from unittest.mock import Mock,patch
 import requests
-import task_processor
-from intent_router import RouteDecision
+from assistant_app.core import task_processor
+from assistant_app.models.router import RouteDecision
 
 
 class DeepSeekTests(unittest.TestCase):
     def test_non_thinking_parameters_and_auth(self):
         response=Mock();response.json.return_value={'choices':[{'message':{'content':'Ответ'}}]}
-        with patch.object(task_processor.intent_router, 'route', return_value=RouteDecision('deepseek', 'data_analysis', .9, 'test')),patch('config.DEEPSEEK_API_KEY', 'test-key'),patch.object(task_processor,'model_post',return_value=response) as post:
+        with patch.object(task_processor.intent_router, 'route', return_value=RouteDecision('deepseek', 'data_analysis', .9, 'test')),patch('assistant_app.config.DEEPSEEK_API_KEY', 'test-key'),patch.object(task_processor,'model_post',return_value=response) as post:
             self.assertEqual(task_processor.process_message('Привет'),'Ответ')
             payload=post.call_args.kwargs['json']
             self.assertEqual(payload['thinking'],{'type':'disabled'})

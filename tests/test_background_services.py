@@ -4,10 +4,10 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock,patch
-from background_services import OutboxClient
-from morning_summary import MorningSummary
-from mood_checkin import MoodCheckin
-from task_store import SQLiteTaskStore
+from assistant_app.services.background_services import OutboxClient
+from assistant_app.services.morning_summary import MorningSummary
+from assistant_app.services.mood_checkin import MoodCheckin
+from assistant_app.core.task_store import SQLiteTaskStore
 
 
 class BackgroundTests(unittest.TestCase):
@@ -28,7 +28,7 @@ class BackgroundTests(unittest.TestCase):
         mood=MoodCheckin(self.client,state=self.root/'mood.sqlite3')
         morning=datetime(2026,11,8,6,tzinfo=timezone.utc)
         later=datetime(2026,11,8,23,tzinfo=timezone.utc)
-        with patch('morning_summary.SUMMARY_CHAT_ID','123456789'),patch('morning_summary.SUMMARY_TIME','09:00'),patch('morning_summary.build_summary',return_value='summary'),patch('mood_checkin.MOOD_CHAT_ID','123456789'),patch('mood_checkin.MOOD_TIME','18:00'):
+        with patch('assistant_app.services.morning_summary.SUMMARY_CHAT_ID','123456789'),patch('assistant_app.services.morning_summary.SUMMARY_TIME','09:00'),patch('assistant_app.services.morning_summary.build_summary',return_value='summary'),patch('assistant_app.services.mood_checkin.MOOD_CHAT_ID','123456789'),patch('assistant_app.services.mood_checkin.MOOD_TIME','18:00'):
             summary.tick(morning);mood.tick(morning)
             summary.tick(later);mood.tick(later)
             summary.tick(later);mood.tick(later)

@@ -8,14 +8,14 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-import code_deploy
-import project_changes as pc
-import project_agent as pa
-import server
-import task_processor
-from tool_protocol import tool_calls
+from assistant_app.operations import code_deploy
+from assistant_app.projects import project_changes as pc
+from assistant_app.projects import project_agent as pa
+from assistant_app.core import server
+from assistant_app.core import task_processor
+from assistant_app.tools.tool_protocol import tool_calls
 
-APP = Path(pc.__file__).parent
+APP = Path(__file__).resolve().parents[1]
 
 
 class ProjectChangeTests(unittest.TestCase):
@@ -29,9 +29,15 @@ class ProjectChangeTests(unittest.TestCase):
         (self.root/'tests/test_demo.py').write_text('import unittest\nfrom demo import value\nclass Tests(unittest.TestCase):\n    def test_positive(self): self.assertGreater(value(), 0)\n')
         (self.root/'.env').write_text('MAX_BOT_TOKEN=private-test-token-12345\n')
         (self.root/'memory').mkdir();(self.root/'memory/facts.py').write_text('private = True')
+        packaged_memory = self.root/'assistant_app/memory'
+        packaged_memory.mkdir(parents=True)
+        (packaged_memory/'store.py').write_text('public_code = True')
+        (packaged_memory/'private.sqlite3').write_text('private data')
         # Use the current interpreter, including its dependency environment.
         (self.root/'.venv').symlink_to(Path(sys.prefix),target_is_directory=True)
-        shutil.copy2(APP/'code_deploy.py',self.root/'code_deploy.py')
+        runner = Path('assistant_app/operations/code_deploy.py')
+        (self.root/runner).parent.mkdir(parents=True)
+        shutil.copy2(APP/runner,self.root/runner)
         self.manager = pc.ProjectChanges(self.root,True,{'10'},test_timeout=20,allowed_senders={'20'})
         self.task = {'task_id':'max_test','source':'max','chat_id':'10','sender_id':'20','bot_message_id':'message'}
         self.state,_ = self.manager.create(self.task,'Исправь в max_bot функцию value')
@@ -50,6 +56,8 @@ class ProjectChangeTests(unittest.TestCase):
         folder = self.manager.job_dir(self.state['id'])
         self.assertFalse((folder/'tree/.env').exists())
         self.assertFalse((folder/'tree/memory').exists())
+        self.assertTrue((folder/'tree/assistant_app/memory/store.py').is_file())
+        self.assertFalse((folder/'tree/assistant_app/memory/private.sqlite3').exists())
         self.assertNotIn('.code_changes',self.state['base'])
         self.assertIn('TOKEN',self.tools.read('config.py')['content'])
         self.edit();self.assertIn('return 1',(self.root/'demo.py').read_text())
@@ -146,7 +154,7 @@ class ProjectChangeTests(unittest.TestCase):
             response = Mock();response.json.return_value={'choices':[{'message':{'content':content}}]};return response
         with patch.object(task_processor,'model_post',side_effect=[reply(xml),reply('Файл прочитан')]), \
              patch.object(task_processor,'WEB_ENABLED',False), \
-             patch('file_tools.execute_tool',return_value={'content':'example','sha256':'hash'}) as execute:
+             patch('assistant_app.tools.file_tools.execute_tool',return_value={'content':'example','sha256':'hash'}) as execute:
             answer=task_processor.openai_completion({},'local','Прочитай файл demo.py','test',allow_files=True)
         self.assertEqual(answer,'Файл прочитан');execute.assert_called_once_with('read_file',{'path':'demo.py'})
 
@@ -165,9 +173,10 @@ class ProjectChangeTests(unittest.TestCase):
             deliver.assert_called_once_with(pending)
 
     def test_generic_file_tools_cannot_bypass_project_workflow(self):
-        import file_tools
+        from assistant_app.tools import file_tools
         with patch.object(file_tools,'FS_ROOTS',(APP,)):
-            for name in ('project_changes.py','project_agent.py','code_deploy.py','memory_agent.py'):
+            for name in ('assistant_app/projects/project_changes.py','assistant_app/projects/project_agent.py',
+                         'assistant_app/operations/code_deploy.py','assistant_app/memory/agent.py'):
                 with self.assertRaises(PermissionError):file_tools.resolve_path(str(APP/name),write=True)
 
     def test_agent_finish_tests_and_reviews_real_changes(self):
@@ -230,13 +239,14 @@ class DeploymentTests(unittest.TestCase):
         self.assertFalse(stale.exists());self.assertTrue(other.exists())
 
     def test_rollback_removes_only_files_created_by_change(self):
-        self.tools.write('new_module.py','value = 1\n','')
+        module = 'assistant_app/memory/new_module.py'
+        self.tools.write(module,'value = 1\n','')
         state,folder=self.deployment()
         with patch.object(code_deploy,'get_status',return_value={'bot_id':'synthetic'}),patch.object(code_deploy,'stop_bot'),patch.object(code_deploy,'launch_bot'),patch.object(code_deploy,'healthy'):
             code_deploy.deploy(self.root,folder,state)
-            self.assertTrue((self.root/'new_module.py').exists())
+            self.assertTrue((self.root/module).exists())
             state['deployment']['mode']='rollback';code_deploy.deploy(self.root,folder,state)
-            self.assertFalse((self.root/'new_module.py').exists())
+            self.assertFalse((self.root/module).exists())
 
 
 class ProtocolAndRoutingTests(unittest.TestCase):

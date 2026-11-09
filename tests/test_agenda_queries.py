@@ -1,8 +1,8 @@
 import bot_test_support  # Load synthetic configuration before application imports.
 import unittest
 from unittest.mock import patch
-import agenda_queries
-import server
+from assistant_app.tools import agenda_queries
+from assistant_app.core import server
 
 
 class AgendaQueryTests(unittest.TestCase):
