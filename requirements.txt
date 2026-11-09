@@ -7,3 +7,4 @@ transformers>=4.57,<5
 torch>=2.2,<3
 sentencepiece>=0.2,<1
 python-dotenv>=1.2,<2
+cryptography>=45,<51

@@ -74,6 +74,32 @@ class PersonalDetailsTests(unittest.TestCase):
         own=[{'category':'personal','slot':'self.birth_date','evidence':'Я родился в Братске 12.11.1990'}]
         self.assertIn('35 лет',pm.age_reply(own,date(2026,10,31)))
 
+    def test_birth_date_and_followup_age_read_memory_without_model(self):
+        from server import execute_with_memory
+        self.memory.use_agent = True
+        self.memory.agent = Mock()
+        self.assertIn('Запомнила', self.turn('Запомни: моя дата рождения — 12 ноября 1990 года')[0])
+        for query in ('Какая моя дата рождения?', 'Когда я родился?', 'Напомни мою дату рождения',
+                      'Агафья, ты помнишь мою дату рождения?'):
+            with self.subTest(query=query):
+                self.assertIn('12.11.1990', self.turn(query, 'read')[0])
+        with patch.object(pm, 'today_local', return_value=date(2026, 10, 31)):
+            self.assertIn('35 лет', self.turn('Я отправлял тебе свою дату рождения. Посчитай сколько мне лет')[0])
+        self.memory.agent.run.assert_not_called()
+        self.extractor.extract.assert_not_called()
+
+        task = {'source': 'max', 'chat_id': '10', 'sender_id': '20', 'task_id': 'read', 'channel_link': 'verified'}
+        execute = Mock()
+        with patch('server.personal_memory', self.memory):
+            self.assertIn('12.11.1990', execute_with_memory(task, 'Когда я родился?', execute, {}))
+            other = dict(task, sender_id='21')
+            self.assertIn('Не нашла', execute_with_memory(other, 'Когда я родился?', execute, {}))
+            forwarded = dict(task, memory_excluded=True)
+            self.assertIn('недоступна', execute_with_memory(forwarded, 'Когда я родился?', execute, {}))
+            telegram = dict(task, source='telegram')
+            self.assertIn('недоступна в Telegram', execute_with_memory(telegram, 'Когда я родился?', execute, {}))
+        execute.assert_not_called()
+
     def test_conflicting_dates_and_incomplete_year_not_guessed(self):
         facts=[{'category':'personal','slot':'self.birth_date','evidence':'Я родился 12.11.1990'},
                {'category':'personal','slot':'self.birthday','evidence':'Моя дата рождения 13.11.1991'}]

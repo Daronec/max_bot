@@ -5,7 +5,14 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 # Only this project file is read; process environment takes precedence.
+_external_keys = set(os.environ)
 load_dotenv(BASE_DIR / ".env", override=False, interpolate=False)
+from secret_vault import vault_values
+for _key, _value in vault_values(BASE_DIR).items():
+    if _key not in _external_keys:
+        os.environ[_key] = _value
+TASKS_PATH = Path(os.environ.get('ASSISTANT_TASKS_DIR', str(BASE_DIR / 'tasks'))).expanduser().resolve()
+LOCAL_AGENT_ENABLED = os.environ.get('LOCAL_AGENT_ENABLED', '1').lower() not in ('0', 'false', 'no')
 BOT_TOKEN = os.environ.get("MAX_BOT_TOKEN", "")
 BOT_ID = os.environ.get("MAX_BOT_ID", "")
 CHAT_ID = os.environ.get("MAX_CHAT_ID") or None
@@ -14,6 +21,24 @@ _max_ca = BASE_DIR / 'certs' / 'max-ca.pem'
 MAX_CA_BUNDLE = os.environ.get('MAX_CA_BUNDLE') or (str(_max_ca) if _max_ca.is_file() else True)
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "5001"))
+SUPERVISOR_PORT = int(os.environ.get("SUPERVISOR_PORT", "5002"))
+if SUPERVISOR_PORT == PORT:
+    raise ValueError("Supervisor and API must use different ports")
+
+# Local panel access. Tests explicitly disable authentication in synthetic settings.
+PANEL_AUTH_ENABLED = os.environ.get('PANEL_AUTH_ENABLED', 'true').lower() not in ('0', 'false', 'no')
+PANEL_ACCESS_TOKEN = os.environ.get('PANEL_ACCESS_TOKEN') or None
+PANEL_ALLOWED_HOSTS = frozenset(value.strip().lower() for value in
+    os.environ.get('PANEL_ALLOWED_HOSTS', 'localhost,127.0.0.1,::1').split(',') if value.strip())
+
+RAG_EMBEDDING_MODEL = os.environ.get('RAG_EMBEDDING_MODEL', '')
+RAG_EMBEDDING_BASE_URL = os.environ.get('RAG_EMBEDDING_BASE_URL', 'http://127.0.0.1:1234/v1')
+RAG_EMBEDDING_LOCAL_DIR = os.environ.get('RAG_EMBEDDING_LOCAL_DIR', '')
+
+TELEGRAM_ENABLED = os.environ.get('TELEGRAM_ENABLED', 'false').lower() in ('1', 'true', 'yes')
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_ALLOWED_SENDER_IDS = frozenset(value.strip() for value in
+    os.environ.get('TELEGRAM_ALLOWED_SENDER_IDS', '').split(',') if value.strip())
 
 # Provider selection is separate from credentials; keep the local backend available.
 LM_PROVIDER = os.environ.get("LM_PROVIDER", "lmstudio")
@@ -44,6 +69,11 @@ LM_SYSTEM_PROMPT = os.environ.get(
     "Если предоставлен run_command и пользователь просит выполнить команду, используй инструмент. "
     "Проверяй exit_code и сообщай фактический результат; не утверждай об успешном запуске без инструмента.",
 )
+WORKER_MAX_ATTEMPTS = max(1, int(os.environ.get('WORKER_MAX_ATTEMPTS', '3')))
+RUN_TIMEOUT_SECONDS = max(1, float(os.environ.get('RUN_TIMEOUT_SECONDS', '600')))
+WORKER_MODE = os.environ.get('WORKER_MODE', 'process')
+if WORKER_MODE not in ('process', 'thread'):
+    raise ValueError('WORKER_MODE must be process or thread')
 WORKER_RETRY_SECONDS = float(os.environ.get("WORKER_RETRY_SECONDS", "30"))
 WEB_ENABLED = os.environ.get('WEB_ENABLED', '1').lower() not in ('0', 'false', 'no')
 WEB_TIMEOUT = float(os.environ.get('WEB_TIMEOUT', '20'))

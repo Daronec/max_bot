@@ -64,6 +64,7 @@ class CommandMenuTests(unittest.TestCase):
         self.assertEqual(task['source'],'max');self.assertTrue(answer.called)
         with patch.object(server.bot_client,'send_message',return_value={'message':msg('out','data')}) as send:
             task.update(status='completed',result='data',delivered=False)
+            server.persist(task)
             server.deliver_result(task)
         self.assertEqual(send.call_args.kwargs['reply_to_message_id'],'menu-message')
 
@@ -88,6 +89,9 @@ class CommandMenuTests(unittest.TestCase):
         self.assertFalse(task['delivered']);self.assertIn('result_attachments',task)
         server.active_tasks.clear();server.load_tasks()
         task=next(iter(server.active_tasks.values()))
+        self.assertTrue(task['delivery_uncertain'])
+        response=server.app.test_client().post('/api/task/'+task['task_id']+'/delivery',json={'action':'retry'})
+        self.assertEqual(response.status_code,200)
         with patch.object(server.bot_client,'send_message',return_value={'message':msg('out','menu')}) as send:
             server.deliver_result(task)
         self.assertIn('attachments',send.call_args.kwargs);self.assertTrue(task['delivered'])

@@ -75,7 +75,7 @@ class RouterTests(unittest.TestCase):
         fake.AutoTokenizer.from_pretrained.return_value.model_max_length = 512
         fake.pipeline.return_value.return_value = {'labels': [ir.INTENT_DESCRIPTIONS['general_chat']], 'scores': [.9]}
         classifier = ir.IntentClassifier()
-        with patch.dict(sys.modules, transformers=fake):
+        with patch.dict(sys.modules, transformers=fake), patch.object(ir, 'cached_model_path', return_value='/cached/intent-model'):
             with concurrent.futures.ThreadPoolExecutor(4) as pool:
                 self.assertEqual(list(pool.map(classifier.classify, ['hello'] * 8)), [('general_chat', .9)] * 8)
         fake.pipeline.assert_called_once_with('zero-shot-classification',
@@ -85,7 +85,7 @@ class RouterTests(unittest.TestCase):
             'hello', candidate_labels=list(ir.INTENT_DESCRIPTIONS.values()),
             hypothesis_template=ir.HYPOTHESIS_TEMPLATE, multi_label=False)
         for loader in (fake.AutoTokenizer, fake.AutoModelForSequenceClassification):
-            loader.from_pretrained.assert_called_once_with(ir.MODEL_ID, local_files_only=True)
+            loader.from_pretrained.assert_called_once_with('/cached/intent-model', local_files_only=True)
 
     def test_zero_shot_maps_all_descriptions_to_stable_intent_ids(self):
         classifier = ir.IntentClassifier()
@@ -104,7 +104,7 @@ class RouterTests(unittest.TestCase):
         fake = Mock()
         fake.AutoTokenizer.from_pretrained.side_effect = OSError('not cached')
         classifier = ir.IntentClassifier()
-        with patch.dict(sys.modules, transformers=fake):
+        with patch.dict(sys.modules, transformers=fake), patch.object(ir, 'cached_model_path', return_value='/cached/intent-model'):
             for _ in range(2):
                 with self.assertRaises((OSError, RuntimeError)):
                     classifier.classify('hello')

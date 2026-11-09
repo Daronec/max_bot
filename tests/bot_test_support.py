@@ -1,6 +1,10 @@
 """Synthetic settings for unit tests; imported before application modules."""
 import os
 os.environ.update({
+    'PANEL_AUTH_ENABLED': 'false',
+    'RAG_EMBEDDING_MODEL': '',
+    'RAG_EMBEDDING_LOCAL_DIR': '',
+    'LOCAL_AGENT_ENABLED': 'false',
     'MAX_BOT_TOKEN': 'unit-test-token',
     'MAX_BOT_ID': '@unit_test_bot',
     'MAX_CHAT_ID': '',

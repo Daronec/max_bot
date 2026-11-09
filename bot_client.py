@@ -85,6 +85,28 @@ class MAXBotClient:
         return self._request('POST', '/answers', params={'callback_id': str(callback_id)},
                              data={'notification': notification[:200]})
 
+    def upload_audio(self, path):
+        from urllib.parse import urlsplit
+        prepared = self._request('POST', '/uploads', params={'type':'audio'})
+        if not prepared:
+            return None
+        parsed = urlsplit(prepared.get('url', ''))
+        # Media upload receives no bot Authorization header. Redirects are forbidden.
+        if (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password
+                or not parsed.hostname.endswith('.okcdn.ru') or not isinstance(prepared.get('token'), str)):
+            self.last_error = 'MAX вернул недоверенный адрес загрузки аудио'
+            return None
+        try:
+            with open(path, 'rb') as audio:
+                response = requests.post(prepared['url'], files={'data':('reply.mp3',audio,'audio/mpeg')},
+                    timeout=(5,60), verify=MAX_CA_BUNDLE, allow_redirects=False)
+            if response.status_code != 200:
+                raise ValueError('Upload rejected')
+            return {'type':'audio','payload':{'token':prepared['token']}}
+        except (requests.RequestException, OSError, ValueError):
+            self.last_error = 'Загрузка аудио MAX не подтверждена'
+            return None
+
     def get_last_messages(self, chat_id, limit=50):
         return self._request('GET', '/messages', params={
             'chat_id': self.validate_chat_id(chat_id), 'count': max(1, min(100, limit))})

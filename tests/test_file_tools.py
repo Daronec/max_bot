@@ -139,10 +139,20 @@ class FileTests(unittest.TestCase):
 
     def test_changes_recorded_before_model_completes(self):
         observed = []
-        with file_tools.capture_file_actions(observed.append) as actions:
+        with file_tools.capture_file_actions(lambda action: observed.append(dict(action))) as actions:
             result = file_tools.write_file('note.txt', 'data')
-            self.assertEqual(observed, [result])
-        self.assertEqual(actions, observed)
+            self.assertEqual([action['stage'] for action in observed], ['planned', 'completed'])
+        self.assertEqual(observed[-1], result)
+        self.assertEqual(actions, [result])
+
+    def test_intent_persistence_failure_prevents_file_mutation(self):
+        def fail_before_change(action):
+            self.assertEqual(action['stage'], 'planned')
+            raise RuntimeError('Cannot persist intent')
+        with file_tools.capture_file_actions(fail_before_change):
+            with self.assertRaises(RuntimeError):
+                file_tools.write_file('not-created.txt', 'data')
+        self.assertFalse((self.root / 'not-created.txt').exists())
 
     def test_model_edits_real_file_without_web_enabled(self):
         file_tools.write_file('note.txt', 'before')
@@ -204,6 +214,7 @@ class ChatAccessTests(unittest.TestCase):
     def test_only_allowed_chat_gets_file_tools(self):
         for chat, expected in ((123, True), (999, False)):
             self.task.update(chat_id=chat, status='queued', result=None)
+            server.persist(self.task)
             with patch.object(server, 'process_message', return_value='done') as process, \
                     patch.object(server, 'deliver_result'):
                 server.process_next_task()

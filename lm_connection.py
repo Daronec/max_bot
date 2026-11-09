@@ -10,6 +10,7 @@ import time
 from urllib.parse import urlsplit, urlunsplit
 
 import requests
+from execution_context import check_execution, current_execution
 
 from config import LM_AUTO_START, LMS_CLI, LMS_START_TIMEOUT, LM_BASE_URL
 from config import (LM_PROVIDER, LM_FALLBACK_ENABLED, LOCAL_LM_BASE_URL, LOCAL_LM_MODEL,
@@ -77,14 +78,67 @@ def recover_local_server(url):
                                      'Откройте LM Studio/Bionic и включите сервер. Задание сохранено.')
 
 
-def _request(method, url, **kwargs):
+def _request_unobserved(method, url, **kwargs):
+    check_execution()
+    deadline = current_execution().deadline
+    if deadline is not None:
+        remaining = max(.1, deadline - time.monotonic())
+        timeout = kwargs.get('timeout', remaining)
+        kwargs['timeout'] = tuple(min(value, remaining) for value in timeout) if isinstance(timeout, tuple) else min(timeout, remaining)
     try:
-        return getattr(requests, method)(url, **kwargs)
+        response = getattr(requests, method)(url, **kwargs)
+        check_execution()
+        from model_stream import consume
+        return consume(response) if kwargs.get('stream') else response
     except requests.ConnectionError as error:
         refused = 'connection refused' in str(error).lower()
         if refused and recover_local_server(url):
-            return getattr(requests, method)(url, **kwargs)
+            check_execution()
+            response = getattr(requests, method)(url, **kwargs)
+            check_execution()
+            from model_stream import consume
+            return consume(response) if kwargs.get('stream') else response
         raise
+
+
+def _request(method, url, **kwargs):
+    context = current_execution()
+    if method == 'post' and context.progress_observer and 'messages' in (kwargs.get('json') or {}):
+        kwargs['json']['stream'] = True
+        kwargs['stream'] = True
+        context.progress_observer('')
+    reservation = {}
+    backend = current_backend() or {}
+    if backend.get('provider') == 'registered':
+        kwargs['timeout'] = (10, backend.get('timeout_seconds',120))
+    if method == 'post' and backend.get('provider') == 'registered' and context.budget_reserver:
+        reservation = context.budget_reserver(backend, kwargs.get('json') or {})
+        # Registered endpoints must not redirect prompts or credentials elsewhere.
+        kwargs['allow_redirects'] = False
+    observer = current_execution().model_observer
+    if observer is None or method != 'post':
+        return _request_unobserved(method, url, **kwargs)
+    started = time.monotonic()
+    response = None
+    try:
+        response = _request_unobserved(method, url, **kwargs)
+        return response
+    finally:
+        usage = {}
+        if response is not None:
+            try:
+                payload = response.json()
+                raw = payload.get('usage', {}) if isinstance(payload, dict) else {}
+                usage = {key:value for key,value in raw.items() if key in
+                         ('prompt_tokens', 'completion_tokens', 'total_tokens')
+                         and isinstance(value, int) and not isinstance(value, bool) and value >= 0}
+            except (ValueError, TypeError, AttributeError):
+                pass
+        status = getattr(response, 'status_code', None)
+        observer(dict(**reservation, model=(kwargs.get('json') or {}).get('model'),
+                      backend='local' if urlsplit(url).hostname in ('127.0.0.1','localhost','::1') else 'remote',
+                      duration_seconds=round(time.monotonic() - started, 3),
+                      http_status=status if isinstance(status, int) else None, usage=usage))
 
 
 logger = logging.getLogger(__name__)
@@ -102,8 +156,10 @@ def intent_session(decision):
     remote = decision.target == 'deepseek'
     backend = {'provider': 'deepseek' if remote else 'lmstudio',
                'base_url': DEEPSEEK_BASE_URL if remote else LOCAL_LM_BASE_URL,
-               'model': DEEPSEEK_MODEL if remote else LOCAL_LM_MODEL,
+               'model': current_execution().model_overrides.get('remote_model' if remote else 'local_model', DEEPSEEK_MODEL if remote else LOCAL_LM_MODEL),
                'api_key': DEEPSEEK_API_KEY if remote else LOCAL_LM_API_KEY}
+    if current_execution().selected_backend and (current_execution().selected_backend['local'] or not current_execution().local_only and current_execution().remote_enabled and decision.reason not in ('privacy_policy', 'personal_memory_local')):
+        backend = current_execution().selected_backend
     token = _selected_backend.set(backend)
     local_token = _local_session.set(False)
     with _route_lock:
@@ -146,7 +202,7 @@ def _fallback(kwargs):
     # Preserve conversation and tool receipts, never restart the original task.
     local = dict(kwargs)
     payload = dict(local.get('json') or {})
-    payload['model'] = LOCAL_LM_MODEL
+    payload['model'] = current_execution().model_overrides.get('local_model', LOCAL_LM_MODEL)
     payload.pop('thinking', None)
     payload['reasoning_effort'] = 'none'
     payload['messages'] = [{k:v for k,v in message.items() if k != 'reasoning_content'}
@@ -160,13 +216,30 @@ def _fallback(kwargs):
     local['timeout'] = (10, LM_TIMEOUT)
     _local_session.set(True)
     with _route_lock: _route['last_provider'] = 'lmstudio'
-    return _request('post', LOCAL_LM_BASE_URL + '/chat/completions', **local)
+    token = _selected_backend.set(dict(provider='lmstudio',base_url=LOCAL_LM_BASE_URL,model=payload['model'],api_key=LOCAL_LM_API_KEY))
+    try:
+        return _request('post', LOCAL_LM_BASE_URL + '/chat/completions', **local)
+    finally:
+        _selected_backend.reset(token)
 
 
 def model_post(url, **kwargs):
     global _retry_deepseek_at
     backend = current_backend()
     if backend is not None:
+        if backend.get('provider') == 'registered':
+            if _local_session.get():
+                return _fallback(kwargs)
+            try:
+                response = _request('post', url, **kwargs)
+                response.raise_for_status()
+                return response
+            except requests.RequestException:
+                if current_execution().backend_failure:
+                    current_execution().backend_failure(backend)
+                with _route_lock:
+                    _route.update(fallback_reason='registered_model_error', last_provider='lmstudio')
+                return _fallback(kwargs)
         # Actual API failure handling stays next to the request. Continue the same
         # conversation on Qwen, preserving tool receipts and avoiding replay.
         from intent_router import deepseek_availability

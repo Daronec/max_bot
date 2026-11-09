@@ -98,25 +98,33 @@ def transcribe(attachment):
     url = (attachment.get('payload') or {}).get('url')
     if not isinstance(url,str):
         raise VoiceError('В голосовом сообщении нет ссылки на аудио. Отправьте его повторно.')
-    global _model
     try:
         with tempfile.TemporaryDirectory(prefix='max-voice-') as directory:
             audio = Path(directory)/'voice.audio'
             download_audio(url, audio)
-            samples = decode_bounded_audio(audio)
-            with _lock:
-                if _model is None:
-                    from faster_whisper import WhisperModel
-                    _model = WhisperModel(VOICE_MODEL, device='cpu', compute_type='int8',
-                        cpu_threads=4, download_root=str(VOICE_MODEL_DIR), local_files_only=True)
-                segments, _ = _model.transcribe(samples, language='ru', beam_size=5,
-                    vad_filter=True, condition_on_previous_text=False, hotwords=ASR_NAME_HINT)
-                text = ' '.join(segment.text.strip() for segment in segments).strip()
-            if not text:
-                raise VoiceError('Не удалось разобрать речь. Повторите голосовое или отправьте текст.')
-            return text
+            return transcribe_local(audio)
     except VoiceError:
         raise
     except Exception:
-        # URLs may carry signed media tokens. Never expose raw transport/decoder errors.
+        raise VoiceError('Не удалось распознать голосовое локально. Отправьте текст.') from None
+
+
+def transcribe_local(audio):
+    global _model
+    try:
+        samples = decode_bounded_audio(audio)
+        with _lock:
+            if _model is None:
+                from faster_whisper import WhisperModel
+                _model = WhisperModel(VOICE_MODEL, device='cpu', compute_type='int8',
+                    cpu_threads=4, download_root=str(VOICE_MODEL_DIR), local_files_only=True)
+            segments, _ = _model.transcribe(samples, language='ru', beam_size=5,
+                vad_filter=True, condition_on_previous_text=False, hotwords=ASR_NAME_HINT)
+            text = ' '.join(segment.text.strip() for segment in segments).strip()
+        if not text:
+            raise VoiceError('Не удалось разобрать речь. Повторите голосовое или отправьте текст.')
+        return text
+    except VoiceError:
+        raise
+    except Exception:
         raise VoiceError('Не удалось распознать голосовое сообщение локально. Проверьте модель распознавания или отправьте текст.') from None

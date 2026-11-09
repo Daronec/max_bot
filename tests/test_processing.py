@@ -107,6 +107,7 @@ class AutomaticFlowTests(unittest.TestCase):
             self.assertIn('retry_at', task)
             self.assertFalse(server.process_next_task())
             task['retry_at'] = 0
+            server.persist(task)
             server.process_next_task()
             self.assertEqual(send.call_count, 1)
 
@@ -117,6 +118,8 @@ class AutomaticFlowTests(unittest.TestCase):
             server.process_next_task()
             self.assertFalse(task['delivered'])
             task['delivery_retry_at'] = 0
+            task['delivery_uncertain'] = False
+            server.persist(task)
             server.process_next_task()
             self.assertTrue(task['delivered'])
             self.assertEqual(process.call_count, 1)
@@ -130,6 +133,8 @@ class AutomaticFlowTests(unittest.TestCase):
             self.assertEqual([len(call.args[1]) for call in send.call_args_list], [4000, 500])
             self.assertEqual(task['sent_chunks'], 1)
         task['delivery_retry_at'] = 0
+        task['delivery_uncertain'] = False
+        server.persist(task)
         with patch.object(server, 'process_message') as process, \
                 patch.object(server.bot_client, 'send_message', return_value={'message':msg('two','a')}) as send:
             server.process_next_task()

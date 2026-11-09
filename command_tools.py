@@ -15,6 +15,7 @@ import uuid
 
 from config import COMMAND_TIMEOUT, COMMAND_MAX_TIMEOUT, COMMAND_MAX_OUTPUT_BYTES, COMMAND_SHELL
 from file_tools import resolve_path
+from execution_context import check_execution, ExecutionStopped
 
 _actions = ContextVar('command_actions', default=None)
 _observer = ContextVar('command_observer', default=None)
@@ -46,6 +47,7 @@ def _kill_group(process):
 
 def run_command(command: str, cwd: str = '.', timeout: int = COMMAND_TIMEOUT) -> dict:
     """Execute a console command using zsh in an allowed working directory. Returns exit_code, stdout, stderr and timed_out. Commands have normal user permissions, not a filesystem sandbox."""
+    check_execution()
     try:
         if not isinstance(command, str) or not command.strip() or len(command) > 8000 or '\x00' in command:
             raise ValueError('Provide a nonempty command up to 8000 characters')
@@ -61,9 +63,9 @@ def run_command(command: str, cwd: str = '.', timeout: int = COMMAND_TIMEOUT) ->
         _actions.get().append(action)
     # Persist the attempt before starting: a restart must not replay an ambiguous command.
     _record(action)
-    environment = dict(os.environ)
-    for key in ('MAX_BOT_TOKEN', 'LM_API_KEY', 'DEEPSEEK_API_KEY', 'LOCAL_LM_API_KEY'):
-        environment.pop(key, None)
+    # Commands receive only the OS/session environment, never provider credentials.
+    allowed_environment = {'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'TERM', 'TZ', 'VIRTUAL_ENV'}
+    environment = {key: value for key, value in os.environ.items() if key in allowed_environment}
     environment['PWD'] = str(directory)
     process = None
     selector = selectors.DefaultSelector()
@@ -81,6 +83,7 @@ def run_command(command: str, cwd: str = '.', timeout: int = COMMAND_TIMEOUT) ->
         selector.register(process.stderr, selectors.EVENT_READ, 'stderr')
         deadline = started + timeout
         while selector.get_map() or process.poll() is None:
+            check_execution()
             if time.monotonic() >= deadline:
                 if timed_out:
                     break
@@ -106,6 +109,12 @@ def run_command(command: str, cwd: str = '.', timeout: int = COMMAND_TIMEOUT) ->
         return {**action, 'stdout': streams['stdout'].decode('utf-8', errors='replace'),
                 'stderr': streams['stderr'].decode('utf-8', errors='replace'),
                 'output_truncated': truncated}
+    except ExecutionStopped:
+        if process is not None:
+            _kill_group(process)
+            action.update(cancelled=True, exit_code=process.wait(timeout=3))
+            _record(action)
+        raise
     except (OSError, subprocess.SubprocessError) as error:
         action['error'] = type(error).__name__
         _record(action)

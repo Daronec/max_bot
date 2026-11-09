@@ -31,6 +31,11 @@ class MoodCheckin:
     def status(self):
         return {'enabled':MOOD_ENABLED,'active':self.active,'time':MOOD_TIME,'error':self.error}
 
+    def record_outbox_receipt(self, task_id, receipt):
+        with self._lock, closing(self.db()) as db:
+            db.execute('UPDATE questions SET mid=? WHERE mid=?', (str(receipt), 'outbox:' + task_id))
+            db.commit()
+
     def tick(self,current=None):
         if str(MOOD_CHAT_ID) not in FS_ALLOWED_CHAT_IDS:
             raise ValueError('Чат настроения не разрешён')
@@ -45,7 +50,10 @@ class MoodCheckin:
                 db.commit()
             if current.time()<scheduled: return
             if db.execute('SELECT 1 FROM questions WHERE day=?',(day,)).fetchone(): return
-            response=self.client.send_message(MOOD_CHAT_ID,QUESTION)
+            if getattr(self.client,'durable_outbox',False) is True:
+                response=self.client.send_outbox(MOOD_CHAT_ID,QUESTION,key=day,purpose='mood',day=day)
+            else:
+                response=self.client.send_message(MOOD_CHAT_ID,QUESTION)
             mid=message_id((response or {}).get('message',{}))
             if not mid: raise RuntimeError('MAX не подтвердил вопрос о настроении')
             db.execute('INSERT INTO questions(day,chat,mid,sent_at) VALUES(?,?,?,?)',

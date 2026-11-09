@@ -134,6 +134,7 @@ class ServerTests(unittest.TestCase):
             data = self.client.post('/api/result', json={'task_id':'demo','result':'done'}).get_json()
             self.assertFalse(data['delivered'])
         self.assertEqual(server.active_tasks['demo']['result'], 'done')
+        self.assertTrue(self.client.post('/api/task/demo/delivery', json={'action':'retry'}).get_json()['success'])
         with patch.object(server.bot_client, 'send_message', return_value={'message': msg('result', 'done')}):
             self.assertTrue(self.client.post('/api/result', json={'task_id':'demo','result':'done'}).get_json()['delivered'])
 

@@ -41,6 +41,13 @@ LOCAL_RULE = re.compile(
     r'(?:создай|добавь|сохрани)\s+(?:контакт|напоминан)|напомни\b', re.I)
 
 
+def cached_model_path():
+    # Resolve locally first: some tokenizer versions consult Hub metadata even
+    # with local_files_only when given a repository name rather than a directory.
+    from huggingface_hub import snapshot_download
+    return snapshot_download(MODEL_ID, local_files_only=True)
+
+
 class IntentClassifier:
     """One lazily loaded CPU pipeline, including a cached failure if not provisioned."""
     def __init__(self):
@@ -55,8 +62,9 @@ class IntentClassifier:
             if self._pipeline is None:
                 try:
                     from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
-                    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, local_files_only=True)
-                    model = AutoModelForSequenceClassification.from_pretrained(MODEL_ID, local_files_only=True)
+                    local_path = cached_model_path()
+                    tokenizer = AutoTokenizer.from_pretrained(local_path, local_files_only=True)
+                    model = AutoModelForSequenceClassification.from_pretrained(local_path, local_files_only=True)
                     tokenizer.model_max_length = min(tokenizer.model_max_length, 512)
                     self._pipeline = pipeline('zero-shot-classification', model=model, tokenizer=tokenizer, device=-1)
                 except Exception as error:

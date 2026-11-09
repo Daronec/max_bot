@@ -18,6 +18,9 @@ from dotenv import dotenv_values
 
 BASE_DIR = Path(__file__).resolve().parent
 AUDIO_SUFFIXES = {'.wav','.flac','.m4a','.mp3','.ogg','.opus','.aac','.aiff','.aif'}
+TTS_MODELS = {'qwen3-tts-0.6b-base': 'Qwen3-TTS 0.6B', 'qwen3-tts-1.7b-base': 'Qwen3-TTS 1.7B'}
+TTS_FILES = ('config.json','model.safetensors','tokenizer_config.json','vocab.json',
+             'merges.txt','speech_tokenizer/config.json','speech_tokenizer/model.safetensors')
 
 
 def settings():
@@ -98,7 +101,10 @@ def prepare(voice_dir,audio,text_file=None):
 def active_profile(voice_dir):
     active = voice_dir/'active.json'
     if not active.is_file():raise ValueError('Профиль голоса ещё не подготовлен. Скопируйте WAV и TXT в inbox и выполните prepare.')
-    ident = json.loads(active.read_text())['profile']
+    return read_profile(voice_dir,json.loads(active.read_text())['profile'])
+
+
+def read_profile(voice_dir,ident):
     if not isinstance(ident,str) or not re.fullmatch(r'[a-f0-9]{32}',ident):raise ValueError('Некорректный профиль.')
     folder = voice_dir/'profiles'/ident
     if folder.is_symlink() or (voice_dir/'profiles').is_symlink():raise ValueError('Профиль не должен быть ссылкой.')
@@ -109,11 +115,88 @@ def active_profile(voice_dir):
     return folder,manifest
 
 
+def preset_model(name):
+    if name not in TTS_MODELS:raise ValueError('Неизвестная модель голосового профиля.')
+    return BASE_DIR/'.models'/'tts'/name
+
+
+def active_voice(model_dir,voice_dir):
+    active = voice_dir/'active.json'
+    if not active.is_file():
+        active_profile(voice_dir)  # Raise the existing setup message.
+    selected=json.loads(active.read_text())
+    model=preset_model(selected['model']) if 'model' in selected else model_dir
+    profile,manifest=read_profile(voice_dir,selected['profile'])
+    return model,profile,manifest
+
+
+def voice_presets(voice_dir):
+    path=voice_dir/'presets.json'
+    return json.loads(path.read_text()) if path.is_file() else {}
+
+
+def sample_path(voice_dir,preset):
+    name=preset.get('sample')
+    if not isinstance(name,str) or not re.fullmatch(r'\d{8}-\d{6}-[a-f0-9]{8}\.wav',name):
+        raise ValueError('Для этого голоса нет сохраненного примера.')
+    directory=voice_dir/'generated';path=directory/name
+    if directory.is_symlink() or path.is_symlink() or not path.is_file() or path.stat().st_size>20*1024*1024:
+        raise ValueError('Сохраненный пример недоступен.')
+    return path
+
+
+def list_voices(model_dir,voice_dir):
+    import wave
+    current=None;active_model=None
+    try:
+        model,profile,_=active_voice(model_dir,voice_dir)
+        active_model=model.resolve()
+        current=dict(profile=profile.name,model=TTS_MODELS.get(model.name,model.name))
+    except (OSError,ValueError,KeyError):pass
+    result=[]
+    for ident,preset in voice_presets(voice_dir).items():
+        entry=dict(id=ident,label=preset['label'],active=False,ready=False,sample_seconds=None)
+        if preset.get('preview_only') is True:
+            entry.update(model=preset['model'],preview_only=True,reference_seconds=preset.get('reference_seconds'))
+        else:
+            model=preset_model(preset['model'])
+            entry.update(model=TTS_MODELS[model.name],profile=preset['profile'],
+                         active=bool(current and current['profile']==preset['profile'] and active_model==model.resolve()))
+            try:
+                _,manifest=read_profile(voice_dir,preset['profile'])
+                entry.update(reference_seconds=manifest.get('duration_seconds'),ready=all((model/name).is_file() for name in TTS_FILES))
+            except (OSError,ValueError,KeyError):pass
+        try:
+            with wave.open(str(sample_path(voice_dir,preset)),'rb') as sample:
+                entry['sample_seconds']=round(sample.getnframes()/sample.getframerate(),2)
+        except (OSError,ValueError,EOFError,wave.Error):pass
+        result.append(entry)
+    return dict(active=current,presets=result)
+
+
+def select_voice(voice_dir,ident):
+    presets=voice_presets(voice_dir)
+    if not isinstance(ident,str) or ident not in presets:
+        raise ValueError('Неизвестный голосовой профиль.')
+    preset=presets[ident]
+    if preset.get('preview_only') is True:
+        raise ValueError('Этот образец доступен только для прослушивания.')
+    try:read_profile(voice_dir,preset['profile'])
+    except (OSError,KeyError):raise ValueError('Эталон этого профиля недоступен.') from None
+    if not all((preset_model(preset['model'])/name).is_file() for name in TTS_FILES):
+        raise ValueError('Модель этого профиля не скачана полностью.')
+    with tempfile.NamedTemporaryFile(dir=voice_dir,prefix='.active-',delete=False) as handle:
+        temporary=Path(handle.name)
+        try:
+            handle.write(json.dumps(dict(profile=preset['profile'],model=preset['model'])).encode())
+            handle.close()
+            os.replace(temporary,voice_dir/'active.json')
+        finally:temporary.unlink(missing_ok=True)
+
+
 def load_tts(model_dir):
     # A missing file is an error, not a reason to download a model at inference time.
-    required = ['config.json','model.safetensors','tokenizer_config.json','vocab.json',
-                'merges.txt','speech_tokenizer/config.json','speech_tokenizer/model.safetensors']
-    if any(not (model_dir/name).is_file() for name in required):raise ValueError('Модель TTS скачана не полностью.')
+    if any(not (model_dir/name).is_file() for name in TTS_FILES):raise ValueError('Модель TTS скачана не полностью.')
     os.environ['HF_HUB_OFFLINE'] = '1'
     os.environ['TRANSFORMERS_OFFLINE'] = '1'
     os.environ.setdefault('HF_HOME',str(BASE_DIR/'.models/hf-tts'))
@@ -125,7 +208,7 @@ def synthesize(model_dir,voice_dir,text):
     import numpy as np
     import soundfile as sf
     if not isinstance(text,str) or not 1<=len(text.strip())<=600:raise ValueError('Пробный текст должен содержать от 1 до 600 символов.')
-    profile,_ = active_profile(voice_dir)
+    model_dir,profile,_ = active_voice(model_dir,voice_dir)
     model = load_tts(model_dir)
     arrays = []
     for result in model.generate(text=text.strip(),ref_audio=str(profile/'reference.wav'),
@@ -156,6 +239,8 @@ def main():
         if args.command=='prepare':result = prepare(voice_dir,args.audio,args.text_file)
         elif args.command=='speak':result = synthesize(model_dir,voice_dir,args.text)
         else:
+            if (voice_dir/'active.json').is_file():
+                model_dir,_,_=active_voice(model_dir,voice_dir)
             result = {'model_dir':str(model_dir),'inbox':str(voice_dir/'inbox'),'model_downloaded':(model_dir/'model.safetensors').is_file(),'voice_prepared':(voice_dir/'active.json').is_file()}
             if result['voice_prepared']:active_profile(voice_dir)
             if args.load:

@@ -10,6 +10,7 @@ import threading
 import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
+from execution_context import check_execution
 
 from config import BASE_DIR, FS_ROOTS, FS_SEARCH_ROOTS, FS_MAX_BYTES, FS_MAX_READ_CHARS
 
@@ -20,12 +21,14 @@ BACKUP_DIR = BASE_DIR / '.bot_file_backups'
 PROTECTED_PATHS = frozenset((BASE_DIR / name).resolve() for name in (
     'voice_clone.py', 'setup_voice_clone.py', 'requirements-tts.txt', 'command_menu.py', 'project_changes.py', 'project_agent.py', 'code_deploy.py', 'tool_protocol.py',
     'personal_memory.py', 'memory_agent.py', 'assistant_identity.py',
-    'config.py', 'file_tools.py', 'task_processor.py', 'server.py', 'bot_client.py',
+    'diagnostics.py', 'context_builder.py', 'model_stream.py', 'supervisor_update.py', 'data_admin.py', 'local_agent.py', 'background_services.py', 'tool_registry.py', 'evaluate_assistant.py',
+    'project_context.py', 'speech_service.py', 'macos_setup.py', 'document_extract.py', 'knowledge_pipeline.py', 'backup_bundle.py', 'model_registry.py', 'automation_service.py', 'identity_service.py', 'http_api.py', 'desktop_memory.py', 'storage_admin.py', 'project_service.py', 'assistant_settings.py', 'supervisor.py', 'telegram_adapter.py', 'knowledge_store.py', 'execution_context.py', 'panel_auth.py', 'task_service.py', 'task_store.py', 'message_service.py', 'worker.py', 'process_manager.py',
+    'config.py', 'file_tools.py', 'task_processor.py', 'server.py', 'bot_client.py', 'secret_vault.py', 'daily_maintenance.py',
     'bot_client_v2.py', 'web_tools.py', 'runtime.py', 'run.py', 'run_simple.py',
     'notifications', 'mood', 'mood_checkin.py', 'agenda_queries.py', 'contacts_tools.py', 'deepseek_balance.py', 'contacts_bridge.py', 'contacts_requests', 'setup_contacts.sh', 'summaries', '.models', 'helpers', 'voice_tools.py', 'morning_summary.py', 'setup_agenda.sh', 'launch_server.py', 'Запустить MAX бот.command', 'requirements.txt', 'setup_max_tls.py', 'command_tools.py', 'lm_connection.py', 'app_tools.py', 'notification_forwarder.py',
 ))
 PROTECTED_PARTS = frozenset(('.secrets', '.git', '.venv', '.ssh', '.aws', '.codex', '.agents',
-                             '.bot_file_backups', '.voices', '.venv-tts', '.code_changes', '__pycache__'))
+                             '.bot_file_backups', '.voices', '.venv-tts', '.venv-xtts', '.code_changes', '.supervisor_releases', '__pycache__'))
 
 
 def digest(data):
@@ -64,7 +67,7 @@ def resolve_path(path, write=False, search=False):
             or candidate == (BASE_DIR / 'config.py').resolve()
             or (write and candidate in PROTECTED_PATHS)
             or (write and any(candidate == BASE_DIR / name or BASE_DIR / name in candidate.parents
-                              for name in ('tasks', 'logs', 'certs')))
+                              for name in ('tasks', 'logs', 'certs', 'static', 'desktop')))
             or (BASE_DIR / 'certs') in candidate.parents
             or candidate.suffix.lower() in ('.key', '.p12', '.pfx', '.keystore')
             or candidate.name in ('id_rsa', 'id_ed25519', 'credentials.json')):
@@ -133,6 +136,13 @@ def read_file(path: str, start_line: int = 1, max_lines: int = 200) -> dict:
         return _error(error)
 
 
+def _observe_file(action, register=False):
+    if register and _actions.get() is not None:
+        _actions.get().append(action)
+    if _action_observer.get() is not None:
+        _action_observer.get()(dict(action))
+
+
 def _save(target, content, expected_sha256):
     if not isinstance(content, str):
         raise ValueError('content must be text')
@@ -149,6 +159,9 @@ def _save(target, content, expected_sha256):
         raise ValueError('File changed or expected_sha256 missing. Read the file again before editing.')
     if not existed and expected_sha256:
         raise ValueError('File no longer exists. Read or list the directory again.')
+    check_execution()
+    receipt = dict(id=uuid.uuid4().hex, path=str(target), changed=False, stage='planned')
+    _observe_file(receipt, register=True)
     backup_id = None
     if existed:
         BACKUP_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -170,16 +183,13 @@ def _save(target, content, expected_sha256):
         # Recheck the version just before replacing the file.
         if target.exists() != existed or (existed and digest(read_bytes(target)) != digest(old)):
             raise ValueError('File changed during editing. Read it again.')
+        check_execution()
         os.replace(temporary, target)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
-    receipt = {'path': str(target), 'changed': True, 'created': not existed,
-               'sha256': digest(new), 'backup_id': backup_id}
-    if _actions.get() is not None:
-        _actions.get().append(receipt)
-    if _action_observer.get() is not None:
-        _action_observer.get()(receipt)
+    receipt.update(changed=True, stage='completed', created=not existed, sha256=digest(new), backup_id=backup_id)
+    _observe_file(receipt)
     return receipt
 
 
@@ -219,8 +229,15 @@ def create_directory(path: str) -> dict:
         with _lock:
             target = resolve_path(path, write=True)
             existed = target.is_dir()
+            if existed:
+                return {'path': str(target), 'created': False}
+            check_execution()
+            receipt = dict(id=uuid.uuid4().hex, path=str(target), created=False, stage='planned')
+            _observe_file(receipt, register=True)
             target.mkdir(parents=True, exist_ok=True)
-            return {'path': str(target), 'created': not existed}
+            receipt.update(created=True, stage='completed')
+            _observe_file(receipt)
+            return receipt
     except (OSError, ValueError, TypeError) as error:
         return _error(error)
 

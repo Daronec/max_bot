@@ -13,11 +13,11 @@ import subprocess
 import threading
 import uuid
 
-from config import BASE_DIR, CODE_CHANGES_ENABLED, CODE_ALLOWED_CHAT_IDS, CODE_ALLOWED_SENDER_IDS, CODE_TEST_TIMEOUT, HOST, PORT
+from config import BASE_DIR, CODE_CHANGES_ENABLED, CODE_ALLOWED_CHAT_IDS, CODE_ALLOWED_SENDER_IDS, CODE_TEST_TIMEOUT, HOST, PORT, TASKS_PATH
 
 _LOCK = threading.RLock()
 JOB_ID = re.compile(r'^[a-f0-9]{12}$')
-PUBLIC_ROOT_FILES = {'.env.example', '.gitignore', 'requirements.txt', 'requirements-tts.txt', 'README.md', 'START.md'}
+PUBLIC_ROOT_FILES = {'.env.example', '.gitignore', 'requirements.txt', 'requirements-tts.txt', 'requirements-rag.txt', 'README.md', 'START.md'}
 PRIVATE_PARTS = {'.env', '.git', '.venv', '.code_changes', 'memory', 'tasks', 'logs',
                  'uploads', 'certs', '.secrets', '.models', '.bot_file_backups', '__pycache__'}
 
@@ -37,6 +37,7 @@ def source_path(name):
     allowed = (len(path.parts) == 1 and (path.suffix in {'.py', '.md', '.sh', '.command'} or name in PUBLIC_ROOT_FILES)
                or path.parts[0] == 'tests' and path.suffix == '.py'
                or path.parts[0] == 'helpers' and path.suffix in {'.swift', '.plist'}
+               or path.parts[0] == 'desktop' and path.suffix == '.swift'
                or path.parts[0] == 'static' and path.suffix in {'.html', '.css', '.js', '.json'})
     if not allowed:
         raise ValueError('Этот тип файла не входит в исходники проекта.')
@@ -62,7 +63,7 @@ def inventory(root):
     for directory, folders, names in os.walk(root):
         relative = Path(directory).relative_to(root)
         folders[:] = [name for name in folders if name not in PRIVATE_PARTS and not name.startswith('.')
-                      and (relative.parts or name in ('tests', 'helpers', 'static'))]
+                      and (relative.parts or name in ('tests', 'helpers', 'static', 'desktop'))]
         for filename in names:
             file = Path(directory) / filename
             name = file.relative_to(root).as_posix()
@@ -270,7 +271,7 @@ class ProjectChanges:
         previous = state['phase']
         state.update(phase='deploying', deployment={'token':token, 'task_id':str(task['task_id']),
                      'mode':'rollback' if rollback else 'apply', 'changes':changes, 'previous_phase':previous,
-                     'host':'127.0.0.1' if HOST in ('0.0.0.0','::') else HOST, 'port':PORT})
+                     'host':'127.0.0.1' if HOST in ('0.0.0.0','::') else HOST, 'port':PORT, 'tasks_dir':str(TASKS_PATH)})
         self.save(state)
         try:
             with (folder / 'deployment.log').open('ab') as log:

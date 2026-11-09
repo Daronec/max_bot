@@ -1,0 +1,2 @@
+# Optional PDF text extraction. Scans need a separately configured local OCR engine.
+pypdf>=6.21.4,<7

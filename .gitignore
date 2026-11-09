@@ -101,4 +101,6 @@ Thumbs.db
 
 # Isolated local voice cloning: dependencies and private recordings
 /.venv-tts/
+/.venv-xtts/
 /.voices/
+/.supervisor_releases/

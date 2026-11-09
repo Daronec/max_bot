@@ -1,8 +1,8 @@
 """Read selected macOS notifications without modifying Apple's database or using inference.
 
 Apple's database is private and version-dependent. Fail visibly on schema/access errors.
-Delivery is at-least-once: a crash after MAX accepts a message but before local commit
-can repeat that chunk. Normal polling/restarts and partial deliveries are deduplicated.
+Platform startup uses the durable shared outbox. Standalone legacy clients retain
+at-least-once delivery; uncertain remote receipts cannot prove non-delivery.
 """
 import hashlib
 import json
@@ -110,13 +110,16 @@ class NotificationForwarder:
             count = db.execute("SELECT value FROM meta WHERE key='unsupported'").fetchone()
             self.unsupported = int(count[0]) if count else 0
             self.last_scan = datetime.now(timezone.utc).isoformat()
-            pending = db.execute('SELECT id,chat,chunks,next_chunk FROM pending ORDER BY id LIMIT 20').fetchall()
-            for ident, chat, encoded, offset in pending:
+            pending = db.execute('SELECT id,chat,chunks,next_chunk,key FROM pending ORDER BY id LIMIT 20').fetchall()
+            for ident, chat, encoded, offset, event_key in pending:
                 if chat != self.chat:
                     raise ValueError('Изменился чат пересылки: проверьте сохранённую очередь')
                 chunks = json.loads(encoded)
                 for index in range(offset, len(chunks)):
-                    response = self.client.send_message(chat, chunks[index])
+                    if getattr(self.client,'durable_outbox',False) is True:
+                        response = self.client.send_outbox(chat, chunks[index], key=f'{event_key}:{index}', purpose='notification')
+                    else:
+                        response = self.client.send_message(chat, chunks[index])
                     if not response or not message_id(response.get('message', {})):
                         raise RuntimeError('MAX не подтвердил доставку уведомления; будет повторная попытка')
                     db.execute('UPDATE pending SET next_chunk=? WHERE id=?', (index+1, ident))

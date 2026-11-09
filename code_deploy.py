@@ -11,11 +11,13 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import signal
+import sqlite3
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.request
+from urllib.parse import quote
 
 
 def digest(data):
@@ -96,11 +98,44 @@ def verify_candidate(folder, state):
 
 
 def get_status(host, port):
-    with urllib.request.urlopen(f'http://{host}:{port}/api/status',timeout=3) as response:
+    request = urllib.request.Request(f'http://{host}:{port}/api/status')
+    token = os.environ.get('PANEL_ACCESS_TOKEN')
+    path = Path(__file__).resolve().parent / '.secrets' / 'panel.token'
+    # The copied runner lives under .code_changes/<id>; use the verified project root.
+    if not path.is_file():
+        path = Path.cwd() / '.secrets' / 'panel.token'
+    if not token and path.is_file():
+        token = path.read_text().strip()
+    if token:
+        request.add_header('Authorization', 'Bearer ' + token)
+    with urllib.request.urlopen(request,timeout=3) as response:
         return json.load(response)
 
 
+def supervisor_action(root, action, port=None):
+    port = port or int(os.environ.get('SUPERVISOR_PORT', '5002'))
+    base = f'http://127.0.0.1:{port}'
+    try:
+        with urllib.request.urlopen(base + '/healthz', timeout=2) as response:
+            health = json.load(response)
+    except (OSError, ValueError):
+        return False
+    if health.get('service') != 'assistant-supervisor':
+        return False
+    token = os.environ.get('PANEL_ACCESS_TOKEN')
+    if not token:
+        token = (root / '.secrets' / 'panel.token').read_text().strip()
+    request = urllib.request.Request(base + '/api/server',
+        data=json.dumps({'action':action}).encode(), method='POST',
+        headers={'Authorization':'Bearer ' + token, 'Content-Type':'application/json'})
+    with urllib.request.urlopen(request, timeout=25) as response:
+        if not json.load(response).get('success'):
+            raise RuntimeError('Supervisor control failed')
+    return True
+
+
 def stop_bot(root):
+    supervisor_action(root, 'stop')
     pid = int((root/'logs/server.pid').read_text())
     result = subprocess.run(['/bin/ps','-p',str(pid),'-o','args='],capture_output=True,text=True)
     if result.returncode:return
@@ -115,6 +150,8 @@ def stop_bot(root):
 
 
 def launch_bot(root):
+    if supervisor_action(root, 'start'):
+        return
     environment = dict(os.environ)
     environment.pop('PYTHONPYCACHEPREFIX',None)
     subprocess.run([str(root/'.venv/bin/python'),str(root/'launch_server.py')],cwd=root,
@@ -224,8 +261,15 @@ def main(root, ident, token):
             if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',task_id):raise ValueError('Invalid task ID')
             deadline = time.monotonic()+120
             while True:
-                task_path = root/'tasks'/(task_id+'.json')
-                task = json.loads(task_path.read_text()) if task_path.is_file() else {}
+                tasks_directory = Path(state['deployment'].get('tasks_dir', root/'tasks'))
+                database = tasks_directory / 'assistant.sqlite3'
+                if database.is_file():
+                    with sqlite3.connect('file:' + quote(str(database)) + '?mode=ro', uri=True) as db:
+                        row = db.execute('SELECT payload FROM tasks WHERE task_id=?', (task_id,)).fetchone()
+                        task = json.loads(row[0]) if row else {}
+                else:
+                    task_path = tasks_directory / (task_id+'.json')
+                    task = json.loads(task_path.read_text()) if task_path.is_file() else {}
                 if task.get('status')=='completed' and task.get('delivered'):
                     break
                 if time.monotonic()>deadline:raise RuntimeError('Approval reply was not delivered')

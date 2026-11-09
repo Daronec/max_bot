@@ -41,6 +41,7 @@ class VoiceTests(unittest.TestCase):
             self.assertEqual(task['transcription'],'Привет')
             self.assertNotIn('audio',task)
             task['retry_at']=0
+            server.persist(task)
             server.process_next_task()
             transcribe.assert_called_once()
             self.assertEqual(task['status'],'completed')

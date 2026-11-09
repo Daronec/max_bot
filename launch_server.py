@@ -3,20 +3,20 @@
 import fcntl
 import http.client
 import json
-import os
 from pathlib import Path
 import socket
 import subprocess
 import sys
 import time
 
-from config import BASE_DIR, BOT_ID, HOST, PORT
+from config import BASE_DIR, BOT_ID, HOST, PORT, SUPERVISOR_PORT
+from code_deploy import supervisor_action
 
 
-def running():
-    connection = http.client.HTTPConnection(HOST, PORT, timeout=2)
+def running(host=HOST):
+    connection = http.client.HTTPConnection(host, PORT, timeout=2)
     try:
-        connection.request('GET', '/api/status')
+        connection.request('GET', '/healthz')
         response = connection.getresponse()
         data = json.loads(response.read(65536))
         return response.status == 200 and data.get('bot_id') == BOT_ID and data.get('status') == 'ok'
@@ -35,6 +35,15 @@ def main():
         except BlockingIOError:
             print('Запуск уже выполняется. Подождите несколько секунд.')
             return 0
+        managed = supervisor_action(BASE_DIR, 'start', SUPERVISOR_PORT)
+        if managed:
+            for _ in range(30):
+                if running('127.0.0.1'):
+                    print(f'Панель ассистента: http://127.0.0.1:{SUPERVISOR_PORT}')
+                    return 0
+                time.sleep(.5)
+            print('Supervisor доступен, API не запустился. Проверьте logs/server.log.')
+            return 1
         if running():
             print(f'Сервер бота уже работает: http://{HOST}:{PORT}')
             return 0
@@ -48,19 +57,16 @@ def main():
         if not interpreter.is_file():
             print('Не найдено окружение .venv. Сначала установите зависимости проекта.')
             return 1
-        with (logs / 'server.log').open('ab') as output:
-            process = subprocess.Popen([str(interpreter), '-u', str(BASE_DIR / 'run.py')],
+        with (logs / 'supervisor.log').open('ab') as output:
+            process = subprocess.Popen([str(interpreter), '-u', str(BASE_DIR / 'supervisor.py')],
                 cwd=BASE_DIR, stdin=subprocess.DEVNULL, stdout=output, stderr=output,
                 start_new_session=True)
-        temporary = logs / '.server.pid.tmp'
-        temporary.write_text(str(process.pid))
-        os.replace(temporary, logs / 'server.pid')
         for _ in range(30):
             if process.poll() is not None:
                 print('Сервер завершился при запуске. Откройте журнал: ' + str(logs / 'server.log'))
                 return 1
-            if running():
-                print(f'Сервер бота запущен: http://{HOST}:{PORT}')
+            if running('127.0.0.1'):
+                print(f'Панель ассистента: http://127.0.0.1:{SUPERVISOR_PORT}')
                 print('Окно Terminal можно закрыть — бот продолжит работать.')
                 print('Журнал: ' + str(logs / 'server.log'))
                 return 0

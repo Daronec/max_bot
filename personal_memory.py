@@ -95,10 +95,17 @@ MONTHS = {name:i for i,names in enumerate([
     ('января','январь'), ('февраля','февраль'), ('марта','март'), ('апреля','апрель'),
     ('мая','май'), ('июня','июнь'), ('июля','июль'), ('августа','август'),
     ('сентября','сентябрь'), ('октября','октябрь'), ('ноября','ноябрь'), ('декабря','декабрь')],1) for name in names}
-AGE_QUERY = re.compile(r'^(?:(?:скажи|подскажи|посчитай|рассчитай)[,\s]+)?(?:'
+AGE_QUERY = re.compile(r'^(?:я\s+(?:уже\s+)?(?:отправлял[аи]?|сообщал[аи]?|указывал[аи]?)\s+(?:тебе\s+)?(?:свою\s+)?дату\s+рождения[.!]\s*)?'
+    r'(?:(?:скажи|подскажи|посчитай|рассчитай)[,\s]+)?(?:'
     r'сколько\s+мне\s+(?:сейчас\s+)?(?:полных\s+)?лет|'
     r'какой\s+(?:у\s+меня\s+|мой\s+)(?:сейчас\s+)?возраст|мой\s+возраст)'
     r'(?:\s+(?:сейчас|на\s+сегодня))?[?.!\s]*$',re.I)
+BIRTH_QUERY = re.compile(r'^(?:(?:пожалуйста|скажи|подскажи|напомни|покажи)[,\s]+)*(?:'
+    r'когда\s+я\s+родил(?:ся|ась)|когда\s+у\s+меня\s+день\s+рождения|'
+    r'(?:какая\s+)?моя\s+дата\s+рождения|какая\s+у\s+меня\s+дата\s+рождения|какая\s+дата\s+рождения\s+у\s+меня|'
+    r'(?:ты\s+)?(?:помнишь|знаешь)\s+мою\s+дату\s+рождения|'
+    r'мою\s+дату\s+рождения|какого\s+числа\s+я\s+родил(?:ся|ась))'
+    r'(?:\s+(?:сохранена|записана)\s+в\s+памяти)?[?.!\s]*$',re.I)
 ADDRESS_FIELD = re.compile(r'^(?:(?:мой\s+)?(?:домашний\s+|почтовый\s+)?адрес'
     r'(?:\s+(?:моего\s+)?(?:проживания|регистрации|прописки))?\s*[:=—-]\s*|'
     r'я\s+(?:живу|проживаю)\s+по\s+адресу\s*[:=—-]?\s*)(?P<value>.+)$',re.I|re.S)
@@ -145,9 +152,8 @@ def today_local():
     return datetime.now(ZoneInfo('Europe/Moscow')).date()
 
 
-def age_reply(facts, as_of=None):
-    """Calculate completed years deterministically from the user's own birthday."""
-    today=as_of or today_local()
+def birth_dates(facts):
+    """Find complete dates in both canonical and older self-memory entries."""
     dates=set()
     for fact in facts:
         slot=fact['slot'].casefold()
@@ -157,6 +163,12 @@ def age_reply(facts, as_of=None):
         if birthday and own and not slot.startswith('family.') and not FAMILY_BIRTH.search(evidence):
             parsed=parse_birth_date(evidence)
             if parsed is not None:dates.add(parsed)
+    return dates
+
+
+def birth_reply(facts, *, as_of=None, show_date=False):
+    today=as_of or today_local()
+    dates=birth_dates(facts)
     if len(dates)>1:
         return 'В памяти есть разные даты вашего рождения. Уточните: «Исправь в памяти: моя дата рождения — ДД.ММ.ГГГГ».'
     if not dates:
@@ -164,9 +176,15 @@ def age_reply(facts, as_of=None):
     birth=dates.pop()
     years=today.year-birth.year-((today.month,today.day)<(birth.month,birth.day))
     if years<0 or years>130:
-        return 'Сохранённая дата рождения выглядит некорректной. Уточните её, чтобы я рассчитала возраст.'
+        return 'Сохранённая дата рождения выглядит некорректной. Уточните её в памяти.'
+    if show_date:
+        return f'В памяти сохранена ваша дата рождения: {birth:%d.%m.%Y}.'
     word='лет' if 11<=years%100<=14 else ('год' if years%10==1 else 'года' if years%10 in {2,3,4} else 'лет')
     return f'На {today.strftime("%d.%m.%Y")} вам {years} {word}.'
+
+
+def age_reply(facts, as_of=None):
+    return birth_reply(facts, as_of=as_of)
 
 
 class QwenExtractor:
@@ -307,15 +325,17 @@ class PersonalMemory:
     @contextmanager
     def turn(self, text, chat_id, sender_id, event_id):
         text=strip_assistant_address(text)
+        show_birth=bool(BIRTH_QUERY.fullmatch(text))
+        personal_date=show_birth or bool(AGE_QUERY.fullmatch(text))
         # No anonymous/group-shared memory and no ingestion from local HTTP tasks.
         if not self.enabled or str(chat_id) not in self.allowed_chats or sender_id is None or not event_id:
-            command = REMEMBER.match(text) or RECALL.fullmatch(text) or FORGET.match(text) or AGE_QUERY.fullmatch(text)
+            command = personal_date or REMEMBER.match(text) or RECALL.fullmatch(text) or FORGET.match(text)
             yield ('Личная память недоступна для этого сообщения: нужен разрешённый чат и известный отправитель.' if command else None)
             return
         scope=hashlib.sha256(f'{chat_id}:{sender_id}'.encode()).hexdigest()
         explicit=bool(REMEMBER.match(text))
         structured=explicit_fields(text) if explicit else None
-        if self.use_agent and not (AGE_QUERY.fullmatch(text) or RECALL.fullmatch(text) or FORGET.match(text) or structured):
+        if self.use_agent and not (personal_date or RECALL.fullmatch(text) or FORGET.match(text) or structured):
             if self.agent is None:
                 from memory_agent import QwenMemoryAgent
                 self.agent=QwenMemoryAgent()
@@ -336,8 +356,8 @@ class PersonalMemory:
         personal=bool(PERSONAL.search(text))
         auto=personal and not UNCERTAIN.search(text) and not SENSITIVE.search(text) and len(text)<=8000
         try:
-            if AGE_QUERY.fullmatch(text):
-                direct=age_reply(self.store.list(scope,limit=-1))
+            if personal_date:
+                direct=birth_reply(self.store.list(scope,limit=-1),show_date=show_birth)
             elif RECALL.fullmatch(text):
                 facts=self.store.list(scope)
                 direct='Вот что я помню о вас:\n'+'\n'.join(f"• {LABELS[f['category']]}: {f['evidence']}" for f in facts) if facts else 'Пока я ничего о вас не сохранила.'
@@ -370,7 +390,7 @@ class PersonalMemory:
             turn=MemoryTurn(context, bool(explicit or auto or selected or personal or SECRET.search(text)), notice)
         except Exception as error:
             logger.warning('personal_memory_failed error=%s',type(error).__name__)
-            direct='Не удалось сохранить или прочитать личную память. Ничего не подтверждаю; попробуйте ещё раз.' if explicit or RECALL.fullmatch(text) or FORGET.match(text) or AGE_QUERY.fullmatch(text) else None
+            direct='Не удалось сохранить или прочитать личную память. Ничего не подтверждаю; попробуйте ещё раз.' if explicit or personal_date or RECALL.fullmatch(text) or FORGET.match(text) else None
             turn=MemoryTurn(force_local=bool(personal or explicit or SECRET.search(text)))
         if direct is None and turn.force_local and not local_endpoint():
             direct='Для работы с личной памятью настройте локальный Qwen на этом компьютере.'

@@ -112,7 +112,10 @@ class MorningSummary:
                 db.commit()
                 row=(str(SUMMARY_CHAT_ID),text,0)
             if row[0]!=str(SUMMARY_CHAT_ID): raise ValueError('Получатель сохранённой сводки изменился')
-            response=self.client.send_message(row[0],row[1])
+            if getattr(self.client,'durable_outbox',False) is True:
+                response=self.client.send_outbox(row[0],row[1],key=day,purpose='summary',day=day)
+            else:
+                response=self.client.send_message(row[0],row[1])
             if not response or not message_id(response.get('message',{})):
                 raise RuntimeError('MAX не подтвердил сводку; доставка будет повторена')
             db.execute('UPDATE daily SET sent=1 WHERE day=?',(day,))
