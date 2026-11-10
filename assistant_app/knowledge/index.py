@@ -7,6 +7,7 @@ import re
 import uuid
 
 from .embeddings import E5Embeddings, EMBEDDING_ERRORS
+from .extract import SUPPORTED_SUFFIXES
 
 
 def chunks(text, size=1200, overlap=200):
@@ -50,8 +51,8 @@ class KnowledgeStore:
         if document_id is not None and (not isinstance(document_id, str) or not re.fullmatch(r'[a-f0-9]{32}', document_id)):
             raise ValueError('Некорректный идентификатор документа')
         if (not isinstance(title, str) or len(title) > 200 or Path(title).name != title
-                or title.startswith('.') or Path(title).suffix.lower() not in ('.txt', '.md')):
-            raise ValueError('Загрузите TXT или Markdown с обычным именем файла')
+                or title.startswith('.') or '\\' in title or Path(title).suffix.lower() not in SUPPORTED_SUFFIXES):
+            raise ValueError('Загрузите TXT, Markdown, RTF, DOCX или PDF с обычным именем файла')
         if not isinstance(text, str) or not text.strip() or '\0' in text or len(text.encode('utf-8')) > 512 * 1024:
             raise ValueError('Требуется текст UTF-8 размером до 512 КБ')
         sections = list(chunks(text))

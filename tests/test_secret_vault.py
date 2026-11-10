@@ -48,6 +48,10 @@ class SecretVaultTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.vault.save('LOCAL_LM_API_KEY', 'replacement')
         self.client.post('/api/vault/lock', json={}, headers=headers)
+        masked = self.client.get('/api/vault')
+        self.assertFalse(masked.json['unlocked'])
+        self.assertTrue(any(entry['name']=='TELEGRAM_BOT_TOKEN' and entry['configured'] for entry in masked.json['entries']))
+        self.assertNotIn(b'sample-new-value', masked.data)
         self.assertEqual(self.client.post('/api/vault', json=reveal, headers=headers).status_code, 403)
         self.assertEqual(self.client.post('/api/vault/unlock', json={'pin': '012345'}, headers=headers).status_code, 200)
 

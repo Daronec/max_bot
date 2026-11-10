@@ -1,9 +1,13 @@
 """One coordinator for legacy jobs, with durable delivery through the common outbox."""
 import hashlib
+import json
 import threading
 import time
 
-from assistant_app.core.task_service import record_lifecycle, timestamp
+from assistant_app.core.task_service import TaskConflict, record_lifecycle, timestamp
+
+
+SERVICE_NAMES = ('summary', 'mood', 'notifications')
 
 
 class BackgroundSettings:
@@ -14,21 +18,38 @@ class BackgroundSettings:
         defaults=dict(summary=SUMMARY_ENABLED,mood=MOOD_ENABLED,notifications=NOTIFICATIONS_ENABLED)
         with self.store.connect() as db:
             row=db.execute("SELECT value FROM metadata WHERE key='background_settings'").fetchone()
-        import json
         saved=json.loads(row[0]) if row else dict(version=0,enabled={})
-        return dict(version=saved['version'],enabled={**defaults,**saved['enabled']})
+        deleted = saved.get('deleted', [])
+        enabled = {**defaults, **saved['enabled']}
+        for name in deleted:
+            enabled[name] = False
+        return dict(version=saved['version'], enabled=enabled, deleted=deleted)
 
     def update(self,name,enabled,version):
-        import json
-        from assistant_app.core.task_service import TaskConflict
-        if name not in ('summary','mood','notifications') or not isinstance(enabled,bool) or not isinstance(version,int) or isinstance(version,bool):raise ValueError('Некорректные настройки фонового сервиса')
-        with self.store.connect() as db,self.store.transaction(db):
-            row=db.execute("SELECT value FROM metadata WHERE key='background_settings'").fetchone()
-            current=json.loads(row[0]) if row else dict(version=0,enabled={})
-            if current['version']!=version:raise TaskConflict('Background settings changed')
-            db.execute('INSERT OR REPLACE INTO metadata VALUES(?,?)',('background_settings_version:'+str(version),json.dumps(current)))
-            current=dict(version=version+1,enabled={**current['enabled'],name:enabled})
-            db.execute('INSERT OR REPLACE INTO metadata VALUES(?,?)',('background_settings',json.dumps(current)))
+        if not isinstance(enabled, bool):
+            raise ValueError('Укажите, включён ли фоновый сервис.')
+        return self._change(name, enabled, version)
+
+    def delete(self, name, version):
+        return self._change(name, None, version)
+
+    def _change(self, name, enabled, version):
+        if name not in SERVICE_NAMES or type(version) is not int:
+            raise ValueError('Некорректные настройки фонового сервиса')
+        with self.store.connect() as db, self.store.transaction(db):
+            row = db.execute("SELECT value FROM metadata WHERE key='background_settings'").fetchone()
+            current = json.loads(row[0]) if row else dict(version=0, enabled={})
+            if current['version'] != version:
+                raise TaskConflict('Background settings changed')
+            deleted = current.get('deleted', [])
+            if name in deleted:
+                raise ValueError('Фоновый сервис уже удалён.')
+            db.execute('INSERT OR REPLACE INTO metadata VALUES(?,?)',
+                       ('background_settings_version:' + str(version), json.dumps(current)))
+            if enabled is None:
+                deleted = [*deleted, name]
+            current = dict(version=version + 1, enabled={**current['enabled'], name: bool(enabled)}, deleted=deleted)
+            db.execute('INSERT OR REPLACE INTO metadata VALUES(?,?)', ('background_settings', json.dumps(current)))
         return self.get()
 
 

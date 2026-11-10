@@ -5,7 +5,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-from assistant_app.operations.maintenance import STATE, ZONE, tick
+from assistant_app.operations.maintenance import STATE, ZONE, review_reason, tick
 from assistant_app.core.task_service import TaskConflict
 from assistant_app.core.task_store import SQLiteTaskStore
 
@@ -62,6 +62,20 @@ class DailyMaintenanceTests(unittest.TestCase):
         self.assertIsNone(self.store.claim(queued['task_id'], time.time()))
         with self.assertRaises(TaskConflict):
             self.store.save(dict(queued, _revision=0, task_id='legacy-send', status='sending'))
+
+    def test_completed_messages_can_still_require_review(self):
+        task = {'status':'completed', 'message':'Добавь в календарь событие'}
+        for answer, reason in (
+            ('Я не могу добавить события в календарь.', 'request_unfulfilled'),
+            ('<tool_call><function=read_file>', 'tool_markup'),
+            ('Событие создано.', 'unverified_action'),
+            ('Создано событие. ID: x-apple-event://fixture', None),
+        ):
+            self.assertEqual(review_reason(dict(task, result=answer)), reason)
+        tool = {'name':'create_reminder', 'effect':'write', 'status':'failed'}
+        self.assertEqual(review_reason(dict(task, result='Готово', tool_executions=[tool])), 'tool_error')
+        self.assertIsNone(review_reason(dict(task, result='Напоминание создано.',
+                                            tool_executions=[tool, {**tool, 'status':'completed'}])))
 
     def test_schedule_runs_at_four_moscow_once_per_day_across_restart(self):
         boundary = datetime(2026, 11, 9, 4, tzinfo=ZONE)

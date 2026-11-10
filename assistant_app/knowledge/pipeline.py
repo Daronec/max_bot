@@ -1,14 +1,11 @@
 """Owner-selected folder sources. Import runs outside HTTP in the worker process."""
 import hashlib
-import json
 import os
 from pathlib import Path
-import subprocess
-import sys
 import time
 import uuid
 
-from assistant_app.paths import PROJECT_ROOT
+from .extract import MAX_PDF_BYTES, SUPPORTED_SUFFIXES, extract_isolated
 
 
 class KnowledgePipeline:
@@ -59,7 +56,7 @@ class KnowledgePipeline:
                 count+=1
                 if count>5000: raise ValueError('В папке более 5000 файлов; выберите меньшую папку')
                 path=Path(directory)/name
-                if name.startswith('.') or path.suffix.lower() not in ('.txt','.md','.pdf') or path.is_symlink(): continue
+                if name.startswith('.') or path.suffix.lower() not in SUPPORTED_SUFFIXES or path.is_symlink(): continue
                 # Check every path component before opening; no traversal outside chosen root.
                 if not path.resolve().is_relative_to(base.resolve()): continue
                 found[path.relative_to(base).as_posix()]=path
@@ -85,7 +82,7 @@ class KnowledgePipeline:
             changed=False
             for relative,path in found.items():
                 old=known.get(relative)
-                if path.stat().st_size>20*1024*1024: fingerprint='oversize:'+str(path.stat().st_mtime_ns)
+                if path.stat().st_size>MAX_PDF_BYTES: fingerprint='oversize:'+str(path.stat().st_mtime_ns)
                 else: fingerprint=hashlib.sha256(path.read_bytes()).hexdigest()
                 if old and old['digest']==fingerprint:continue
                 document=old['document'] if old else hashlib.sha256((ident+':'+relative).encode()).hexdigest()[:32]
@@ -97,25 +94,15 @@ class KnowledgePipeline:
                     if fingerprint.startswith('oversize:'):raise ValueError('Файл превышает 20 МБ')
                     # Open the selected file as a descriptor, prevent a final symlink swap.
                     descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
-                    try:
-                        with os.fdopen(descriptor,'rb') as stream:
-                            data=stream.read(20*1024*1024+1)
-                        if len(data)>20*1024*1024:raise ValueError('Файл превышает 20 МБ')
-                        fingerprint=hashlib.sha256(data).hexdigest()
-                        import tempfile
-                        with tempfile.TemporaryDirectory(prefix='knowledge-extract-') as temporary:
-                            copy=Path(temporary)/('document'+path.suffix.lower());copy.write_bytes(data);copy.chmod(0o600)
-                            result = subprocess.run(
-                                [sys.executable, '-m', 'assistant_app.knowledge.extract', str(copy)],
-                                cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=30,
-                            )
-                            payload=json.loads(result.stdout)
-                        if result.returncode or payload.get('error'):raise ValueError(payload.get('error','Ошибка извлечения текста'))
-                    except (subprocess.SubprocessError,json.JSONDecodeError) as exc:
-                        raise ValueError('Извлечение текста не завершено') from exc
+                    with os.fdopen(descriptor, 'rb') as stream:
+                        data = stream.read(MAX_PDF_BYTES + 1)
+                    if len(data) > MAX_PDF_BYTES:
+                        raise ValueError('Файл превышает 20 МБ')
+                    fingerprint = hashlib.sha256(data).hexdigest()
+                    text = extract_isolated(data, path.suffix.lower())
                     try:self.knowledge.document(owner,document);existing=True
                     except KeyError:existing=False
-                    self.knowledge.ingest(owner,(path.stem[:180]+'.txt') if path.suffix.lower()=='.pdf' else path.name,payload['text'],document if existing else None,new_document_id=None if existing else document)
+                    self.knowledge.ingest(owner,path.name,text,document if existing else None,new_document_id=None if existing else document)
                 except (ValueError,OSError) as exc:
                     error=str(exc)[:500]
                     with self.store.connect() as db:db.execute("UPDATE knowledge_documents SET status='source_error' WHERE id=?",(document,))

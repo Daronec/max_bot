@@ -3,6 +3,7 @@
 import os
 import re
 import uuid
+from pathlib import Path
 
 from flask import jsonify, request, session
 from werkzeug.exceptions import HTTPException
@@ -185,6 +186,30 @@ def register_api(runtime):
         from assistant_app.tools.tool_registry import public_catalogue
         return jsonify(success=True, tools=public_catalogue())
 
+    @runtime.app.route('/api/permissions')
+    def permissions():
+        import subprocess
+        import sys
+
+        contacts = 'unknown'
+        if sys.platform == 'darwin':
+            from assistant_app.tools.contacts_bridge import invoke
+            try:
+                result = invoke(['--check'], timeout=5, blocking=False)
+                status = result.get('authorization') if isinstance(result, dict) else None
+                if type(status) is int:
+                    contacts = {
+                        0: 'pending', 1: 'restricted', 2: 'denied', 3: 'approved', 4: 'limited',
+                    }.get(status, 'unknown')
+            except (OSError, subprocess.SubprocessError, ValueError):
+                pass
+        values = runtime.assistant_settings().get()['values']
+        return jsonify(success=True, tools={
+            'files': values['file_tools_enabled'], 'commands': values['commands_enabled'],
+            'web': values['web_enabled'],
+        }, links=runtime.identity_service().links(),
+            macos={'contacts': contacts} if sys.platform == 'darwin' else None)
+
     @runtime.app.route('/api/logs')
     def logs():
         from assistant_app.operations.diagnostics import log_tail
@@ -196,15 +221,28 @@ def register_api(runtime):
         if request.method == 'GET':
             return jsonify(success=True, **service.get())
         data = body()
+        if data.get('action') == 'delete':
+            return jsonify(success=True, **service.delete(data.get('name'), data.get('version')))
         return jsonify(success=True, **service.update(data.get('name'), data.get('enabled'), data.get('version')))
 
     @runtime.app.route('/api/knowledge', methods=['GET', 'POST'])
     def knowledge_documents():
         store = runtime.knowledge_store()
-        scope = runtime.project_context().scope(request.args.get('project_id') if request.method == 'GET' else body().get('project_id'))
         if request.method == 'GET':
+            scope = runtime.project_context().scope(request.args.get('project_id'))
             return jsonify(success=True, documents=store.list(scope), hybrid_enabled=bool(store.embeddings))
+        if request.mimetype == 'multipart/form-data':
+            from assistant_app.knowledge.extract import extract_isolated, upload_limit
+            upload = request.files.get('file')
+            if upload is None or not upload.filename:
+                raise ValueError('Выберите файл для загрузки.')
+            scope = runtime.project_context().scope(request.form.get('project_id') or None)
+            suffix = Path(upload.filename).suffix.lower()
+            limit = upload_limit(suffix)
+            text = extract_isolated(upload.stream.read(limit + 1), suffix)
+            return jsonify(success=True, document=store.ingest(scope, upload.filename, text))
         data = body()
+        scope = runtime.project_context().scope(data.get('project_id'))
         result = store.ingest(scope, data.get('title'), data.get('text'), data.get('document_id'))
         return jsonify(success=True, document=result)
 
@@ -358,7 +396,10 @@ def register_api(runtime):
         data = body()
         if data.get('action') == 'create':
             return jsonify(success=True, id=service.create(data.get('config')))
-        service.toggle(data.get('id'), data.get('enabled'), data.get('revision'))
+        if data.get('action') == 'delete':
+            service.delete(data.get('id'), data.get('revision'))
+        else:
+            service.toggle(data.get('id'), data.get('enabled'), data.get('revision'))
         return jsonify(success=True)
 
     @runtime.app.route('/api/conversations/<conversation_id>', methods=['GET', 'DELETE'])

@@ -9,18 +9,18 @@ import uuid
 from assistant_app.config import BASE_DIR
 
 
-def invoke(arguments):
+def invoke(arguments, *, timeout=90, blocking=True):
     directory=BASE_DIR/'contacts_requests'
     directory.mkdir(exist_ok=True,mode=0o700)
     with (directory/'.lock').open('a') as guard:
-        fcntl.flock(guard,fcntl.LOCK_EX)
+        fcntl.flock(guard, fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB)
         path=directory/(uuid.uuid4().hex+'.json')
         response=Path(str(path)+'.result.json')
         try:
             fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
             with os.fdopen(fd,'w') as output:json.dump({'args':arguments},output,ensure_ascii=False)
             subprocess.run(['/usr/bin/open','-W','-n',str(BASE_DIR/'helpers/MAX Bot Contacts.app'),'--args','--request',str(path)],
-                           stdin=subprocess.DEVNULL,capture_output=True,timeout=90,check=True)
+                           stdin=subprocess.DEVNULL,capture_output=True,timeout=timeout,check=True)
             return json.loads(response.read_text())
         finally:
             path.unlink(missing_ok=True)

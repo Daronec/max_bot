@@ -4,7 +4,8 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock,patch
-from assistant_app.services.background_services import OutboxClient
+from assistant_app.core.task_service import TaskConflict
+from assistant_app.services.background_services import BackgroundCoordinator, BackgroundSettings, OutboxClient
 from assistant_app.services.morning_summary import MorningSummary
 from assistant_app.services.mood_checkin import MoodCheckin
 from assistant_app.core.task_store import SQLiteTaskStore
@@ -22,6 +23,27 @@ class BackgroundTests(unittest.TestCase):
         tasks=self.store.all();self.assertEqual(len(tasks),1)
         task=tasks[0]
         self.assertEqual(task['status'],'completed');self.assertFalse(task['delivered'])
+
+    @patch('assistant_app.config.SUMMARY_ENABLED', True)
+    def test_deleted_service_stays_absent_and_does_not_run_after_restart(self):
+        settings = BackgroundSettings(self.store)
+        settings.update('mood', True, 0)
+        with self.assertRaises(TaskConflict):
+            settings.delete('summary', 0)
+        settings.delete('summary', 1)
+
+        reopened = BackgroundSettings(SQLiteTaskStore(self.store.directory))
+        self.assertEqual(reopened.get()['deleted'], ['summary'])
+        self.assertFalse(reopened.get()['enabled']['summary'])
+        with self.assertRaisesRegex(ValueError, 'уже удалён'):
+            reopened.update('summary', True, 2)
+
+        stop = Mock()
+        stop.is_set.side_effect = [False, False, False, True]
+        summary, mood = Mock(), Mock()
+        BackgroundCoordinator([('summary', summary, 30), ('mood', mood, 30)], reopened).run(stop)
+        summary.tick.assert_not_called()
+        mood.tick.assert_called_once()
 
     def test_summary_and_mood_queue_and_actual_mood_receipt(self):
         summary=MorningSummary(self.client,state=self.root/'summary.sqlite3')

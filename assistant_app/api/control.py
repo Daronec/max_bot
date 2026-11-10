@@ -76,7 +76,7 @@ def create_app(manager, auth, api_url, bot_id='', allowed_hosts=('localhost', '1
         if vault is None:return jsonify(success=False,error='Хранилище недоступно.'),404
         if request.method == 'GET':
             unlocked = session.get('vault_until',0)>time.time()
-            return jsonify(success=True,unlocked=unlocked,entries=vault.entries() if unlocked else [],
+            return jsonify(success=True,unlocked=unlocked,entries=vault.entries(),
                            expires_in=max(0,session.get('vault_until',0)-time.time()))
         if session.get('vault_until',0)<=time.time():return jsonify(success=False,error='Разблокируйте хранилище PIN-кодом.'),403
         data = request.get_json(silent=True) or {}

@@ -7,7 +7,7 @@ import time
 import uuid
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from assistant_app.core.task_service import record_lifecycle
+from assistant_app.core.task_service import TaskConflict, record_lifecycle
 
 
 class AutomationService:
@@ -89,7 +89,6 @@ class AutomationService:
     def toggle(self, ident, enabled, revision):
         if not isinstance(enabled, bool) or isinstance(revision, bool) or not isinstance(revision, int):
             raise ValueError('Укажите enabled и revision')
-        from assistant_app.core.task_service import TaskConflict
         with self.store.connect() as db, self.store.transaction(db):
             row = db.execute('SELECT config,revision FROM automations WHERE id=?', (ident,)).fetchone()
             if not row:
@@ -98,6 +97,17 @@ class AutomationService:
                 raise TaskConflict('Automation changed')
             due = self.following(json.loads(row[0]), time.time())
             db.execute('UPDATE automations SET enabled=?,revision=revision+1,next_due=? WHERE id=?', (int(enabled), due, ident))
+
+    def delete(self, ident, revision):
+        if not isinstance(ident, str) or not ident or type(revision) is not int:
+            raise ValueError('Укажите расписание и его версию.')
+        with self.store.connect() as db, self.store.transaction(db):
+            deleted = db.execute('DELETE FROM automations WHERE id=? AND revision=?', (ident, revision))
+            if deleted.rowcount:
+                return
+            if db.execute('SELECT 1 FROM automations WHERE id=?', (ident,)).fetchone():
+                raise TaskConflict('Automation changed')
+            raise KeyError(ident)
 
     def tick(self, now=None):
         now = time.time() if now is None else now

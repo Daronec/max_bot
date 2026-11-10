@@ -40,6 +40,24 @@ class AutomationTests(unittest.TestCase):
             self.service.toggle(ident, True, 1)
         self.assertEqual(self.service.tick(9999999999), [])
 
+    def test_delete_stops_future_runs_and_preserves_queued_run(self):
+        ident = self.service.create(self.config, now=1000)
+        [task_id] = self.service.tick(1120)
+        self.service.toggle(ident, True, 1)
+        with self.assertRaises(TaskConflict):
+            self.service.delete(ident, 1)
+        due = self.service.list()[0]['next_due']
+        self.service.delete(ident, 2)
+
+        restarted = AutomationService(SQLiteTaskStore(self.store.directory))
+        self.assertEqual(restarted.list(), [])
+        task = self.store.get(task_id)
+        self.assertEqual(task['status'], 'queued')
+        task.update(status='completed', result='done', completed_at='now')
+        self.store.save(task)
+        self.assertEqual(restarted.tick(due), [])
+        self.assertEqual(self.store.get(task_id)['result'], 'done')
+
     def test_linked_channel_is_frozen_and_revocation_disables_schedule(self):
         from assistant_app.channels.identities import IdentityService
         initial=self.store.submit_chat('start','local_owner')

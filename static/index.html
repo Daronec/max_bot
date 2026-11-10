@@ -18,7 +18,7 @@
 <form id="pinSetupForm"><label for="newPin">PIN (6–12 цифр)</label><input id="newPin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" autocomplete="new-password" required><label for="confirmPin">Повтори PIN</label><input id="confirmPin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" autocomplete="new-password" required><div class="actions"><button class="primary">Создать PIN</button><button type="button" id="pinSetupLogout">Выйти</button></div></form><p id="pinSetupNotice" role="alert"></p>
 </section>
 <div id="shell" hidden>
-<aside><div class="brand">Ассистент<small>Локальная панель управления</small></div><nav aria-label="Разделы"><button data-view="overview" aria-current="page">Инфраструктура</button><button data-view="chat">Диалоги</button><button data-view="knowledge">Знания</button><button data-view="runs">Запуски</button><button data-view="settings">Настройки</button><button data-view="vault">Секреты</button><button data-view="project">Проект</button><button data-view="memory">Память</button><button data-view="voices">Голос</button><button data-view="identities">Каналы</button><button data-view="automations">Расписания</button></nav><div class="foot">Данные и выполнение — на вашем Mac</div></aside>
+<aside><div class="brand">Ассистент<small>Локальная панель управления</small></div><nav aria-label="Разделы"><button data-view="overview" aria-current="page">Инфраструктура</button><button data-view="chat">Диалоги</button><button data-view="knowledge">Знания</button><button data-view="runs">Запуски</button><button data-view="settings">Настройки</button><button data-view="permissions">Разрешения</button><button data-view="vault">Секреты</button><button data-view="project">Проект</button><button data-view="memory">Память</button><button data-view="voices">Голос</button><button data-view="identities">Каналы</button><button data-view="automations">Расписания</button></nav><div class="foot">Данные и выполнение — на вашем Mac</div></aside>
 <main><header><div><h1 id="pageTitle">Инфраструктура</h1><p class="muted" id="status">Проверяем состояние…</p></div><button id="logoutBtn">Выйти</button></header>
 <article class="card"><label for="contextProject">Рабочий проект для новых диалогов и знаний</label><select id="contextProject"><option value="">Общее пространство</option></select><details><summary>Память проекта и создание проекта</summary><form id="contextProjectForm"><label for="contextProjectTitle">Название</label><input id="contextProjectTitle" maxlength="120" required><label for="contextProjectNotes">Подтвержденные сведения проекта</label><textarea id="contextProjectNotes" rows="4" maxlength="8000"></textarea><p class="muted">Память и документы проекта изолированы от других проектов. Для смены проекта начните новый диалог. Очистка памяти исключает сведения из будущего контекста; прежние ответы остаются в истории.</p><div class="actions"><button>Сохранить / создать проект</button></div></form></details></article>
 <section id="overviewView"><article class="card"><h2>Ежедневная проверка сбоев</h2><p class="muted">В 04:00 по Москве. Ремонт локальной модели и проверка после перезапуска. Другие случаи требуют разбора.</p><pre id="maintenanceReport" class="detail"></pre></article><article class="card"><details><summary>Диагностические журналы</summary><select id="logName"><option>supervisor.log</option><option>server.log</option><option>worker.log</option><option>launchd.log</option></select><div class="actions"><button id="loadLog">Показать последние строки</button></div><pre id="logText" class="detail"></pre></details></article>
@@ -27,21 +27,30 @@
 <article class="card" style="margin-top:18px"><h2>Маршрутизация моделей</h2><p class="muted">Текущее состояние подключений и правил маршрутизации.</p><pre id="routing"></pre></article>
 </section>
 <section id="chatView" hidden><div class="card"><h2>Диалог с ассистентом</h2><p class="muted">Общение напрямую на компьютере. История сохраняется локально; подключение MAX не требуется.</p><label for="conversationSelect">Диалог</label><select id="conversationSelect"><option value="">Новый диалог</option></select><div class="actions"><button id="deleteConversation" type="button">Удалить выбранный диалог</button><a href="/api/export" download>Экспорт персональных данных</a></div><div id="chatHistory" class="detail muted"></div><form id="taskForm"><label for="modelTarget">Модель</label><select id="modelTarget"><option value="auto">Авто · локальная обработка</option><option value="qwen">Локальная модель</option><option value="deepseek">DeepSeek · отправка истории в облако</option></select><p class="muted">Личная память, база знаний и диалоги с приватным контекстом обрабатываются локально. Для облака используйте отдельный диалог без приватных данных.</p><label><input id="useKnowledge" type="checkbox" checked> Использовать базу знаний</label><label><input id="allowTools" type="checkbox"> Разрешить файловые инструменты и команды для этой задачи</label><label for="message">Что нужно сделать</label><textarea id="message" rows="5" required placeholder="Опишите задачу"></textarea><details><summary>Текущий запуск</summary><label for="taskId">ID (создается автоматически)</label><input id="taskId" pattern="[A-Za-z0-9_-]{1,100}"></details><div class="actions"><button id="sendBtn" class="primary">Отправить</button><button id="resultBtn" type="button">Обновить результат</button><button id="copyBtn" type="button">Копировать</button><button id="cancelCurrent" type="button" hidden>Отменить выполнение</button></div></form></div><div class="card"><h2>Голос</h2><p class="muted">Аудиофайл до 20 МБ и 5 минут распознается локально. Голосовой ввод не выдает права на инструменты. Озвучивание использует установленный TTS и подготовленный профиль; текст остается доступен.</p><form id="audioForm"><input id="audioInput" type="file" accept="audio/*" required aria-label="Аудиозапись"><div class="actions"><button>Отправить аудио</button><button id="speakAnswer" type="button">Озвучить начало ответа</button></div></form><audio id="speechPlayer" controls hidden style="width:100%;margin-top:16px"></audio></div><div class="card"><h2>Результат</h2><pre id="result">Результат появится после выполнения задачи.</pre><div id="resultSources" class="actions"></div></div></section>
-<section id="knowledgeView" hidden><article class="card"><h2>Папки знаний</h2><p class="muted">Явно выбранные папки: TXT, Markdown и PDF с текстовым слоем (requirements-rag.txt). Изменения индексируются worker в фоне. Скрытые файлы и символьные ссылки пропускаются. Удаленный через панель документ автоматически не возвращается.</p><form id="sourceForm"><label for="sourcePath">Абсолютный путь папки</label><input id="sourcePath" required placeholder="/Users/name/Documents/Knowledge"><div class="actions"><button>Добавить папку</button><button id="refreshSources" type="button">Обновить состояние</button></div></form><div id="knowledgeSources"></div></article><article class="card"><h2>База знаний</h2><p class="muted">Загрузите TXT или Markdown до 512 КБ. Текстовый поиск доступен сразу; смысловой поиск включается при настройке локальной модели эмбеддингов.</p><label for="knowledgeFile">Добавить документ</label><input id="knowledgeFile" type="file" accept=".txt,.md,text/plain,text/markdown"><div id="knowledgeList" class="detail"></div></article><article class="card"><h2>Проверить поиск</h2><form id="knowledgeSearchForm"><label for="knowledgeQuery">Запрос</label><input id="knowledgeQuery" required><div class="actions"><button>Найти</button></div></form><pre id="knowledgeResults" class="detail"></pre></article><article id="documentCard" class="card" hidden><h2 id="documentTitle"></h2><pre id="documentText" class="detail"></pre></article></section>
+<section id="knowledgeView" hidden><article class="card"><h2>Папки знаний</h2><p class="muted">Поддерживаются TXT, Markdown, RTF, DOCX и PDF с текстовым слоем. Изменения индексируются worker в фоне. Скрытые файлы и символьные ссылки пропускаются. Удаленный через панель документ автоматически не возвращается.</p><form id="sourceForm"><label for="sourcePath">Абсолютный путь папки</label><input id="sourcePath" required placeholder="/Users/name/Documents/Knowledge"><div class="actions"><button>Добавить папку</button><button id="refreshSources" type="button">Обновить состояние</button></div></form><div id="knowledgeSources"></div></article><article class="card"><h2>База знаний</h2><p class="muted">Выберите TXT или Markdown до 512 КБ либо RTF, DOCX или PDF до 20 МБ. Текстовый поиск доступен сразу; смысловой поиск включается при настройке локальной модели эмбеддингов.</p><form id="knowledgeUploadForm"><label for="knowledgeFile">Файл для загрузки</label><input id="knowledgeFile" type="file" aria-describedby="knowledgeUploadStatus"><div class="actions"><button id="knowledgeUploadButton" disabled>Добавить в базу</button></div><p id="knowledgeUploadStatus" role="status">Выберите файл, затем нажмите «Добавить в базу».</p></form><div id="knowledgeList" class="detail"></div></article><article class="card"><h2>Проверить поиск</h2><form id="knowledgeSearchForm"><label for="knowledgeQuery">Запрос</label><input id="knowledgeQuery" required><div class="actions"><button>Найти</button></div></form><pre id="knowledgeResults" class="detail"></pre></article><article id="documentCard" class="card" hidden><h2 id="documentTitle"></h2><pre id="documentText" class="detail"></pre></article></section>
 <section id="memoryView" hidden><article class="card"><h2>Личная память владельца</h2><p class="muted">Общие факты для панели и подтверждённых личных чатов MAX и Telegram. «Запомни» сохраняет факт, «Забудь» удаляет его из общей памяти. Пароли и ключи не сохраняются.</p><div id="memoryList"></div><form id="memoryForm"><label for="memoryCategory">Категория</label><select id="memoryCategory"><option value="personal">Личные сведения</option><option value="family">Семья</option><option value="profession">Профессия</option><option value="work">Работа</option><option value="preferences">Предпочтения</option><option value="health">Здоровье</option><option value="finance">Финансы</option></select><label for="memorySlot">Атрибут, например self.name</label><input id="memorySlot" required pattern="[a-z][a-z0-9_.-]{1,100}" placeholder="self.name"><label for="memoryEvidence">Факт от первого лица</label><textarea id="memoryEvidence" rows="3" required maxlength="700" placeholder="Меня зовут…"></textarea><div class="actions"><button class="primary">Сохранить факт</button><button id="newMemoryBtn" type="button">Новая запись</button></div></form></article></section>
 <section id="projectView" hidden><article class="card"><h2>Исходники проекта</h2><p class="muted">Рабочие файлы доступны для просмотра. Правки сохраняются в отдельной копии; применение требует успешных тестов и проверки diff.</p><div class="actions"><button id="newDraftBtn">Создать копию для правок</button></div><label for="draftId">ID копии (пустое поле — рабочий проект)</label><input id="draftId" placeholder="ID подготовленного изменения"><div class="actions"><button id="openDraftBtn">Открыть</button></div><label for="projectFile">Файл</label><select id="projectFile"></select><p id="editorMode" class="muted"></p><textarea id="projectEditor" rows="18" spellcheck="false" readonly style="font:13px/1.6 ui-monospace,monospace"></textarea><div class="actions"><button id="saveProjectBtn" disabled>Сохранить в копии</button><button id="testProjectBtn" disabled>Проверить тестами</button><button id="applyProjectBtn" disabled>Применить и перезапустить</button><button id="rollbackProjectBtn" disabled>Откатить версию</button></div></article><article class="card"><h2>Diff и проверки</h2><pre id="projectDiff" class="detail"></pre><pre id="projectResult" class="detail"></pre></article></section>
 <section id="automationsView" hidden><article class="card"><h2>Системные фоновые сервисы</h2><p class="muted">Сводки, проверка настроения и уведомления используют общую очередь доставки и настроенного получателя MAX. Включение разрешает последующие фоновые доставки.</p><div id="backgroundServices"></div></article><article class="card"><h2>Новая автоматизация</h2><p class="muted">Результат появится отдельным диалогом в панели. Выполнение локальное, без инструментов. После простоя можно пропустить запуск или выполнить один раз; параллельные запуски одного расписания исключены.</p><form id="automationForm"><label for="automationTitle">Название</label><input id="automationTitle" required maxlength="120"><label for="automationPrompt">Задача</label><textarea id="automationPrompt" required maxlength="32000"></textarea><label for="automationKind">Расписание</label><select id="automationKind"><option value="daily">Ежедневно</option><option value="interval">Через интервал</option></select><label for="automationTime">Время HH:MM</label><input id="automationTime" type="time" value="09:00"><label for="automationZone">Часовой пояс IANA</label><input id="automationZone" value="Europe/Moscow"><label for="automationInterval">Интервал, секунд</label><input id="automationInterval" type="number" min="60" value="3600"><label for="automationChannel">Канал результата</label><select id="automationChannel"><option value="">Диалог в панели</option></select><label for="automationMissed">После пропущенного запуска</label><select id="automationMissed"><option value="skip">Пропустить</option><option value="once">Выполнить один раз</option></select><div class="actions"><button class="primary">Создать</button></div></form></article><div id="automationList"></div></section>
 <section id="identitiesView" hidden><article class="card"><h2>Привязка каналов</h2><p class="muted">Создайте код, отправьте команду боту из нужного чата, затем проверьте ID отправителя и чата и подтвердите привязку. Подтверждение даёт личному чату доступ к общей памяти. Привязку к истории диалога и его документам можно выбрать отдельно. Права на инструменты привязка не выдает. Используйте личный чат.</p><select id="linkChannel"><option value="telegram">Telegram</option><option value="max">MAX</option></select><div class="actions"><button id="issueLink">Создать код на 10 минут</button></div><pre id="linkCode"></pre></article><div id="channelLinks"></div></section>
+<section id="permissionsView" hidden>
+<article class="card"><h2>Доступы ассистента</h2><p class="muted">Инструменты включаются в настройках, а запросы на привязку чатов подтверждаются в разделе «Каналы».</p><div class="actions"><button id="refreshPermissions">Обновить список</button><button id="permissionToolSettings">Настройки инструментов</button><button id="permissionChannelSettings">Управление привязками</button></div></article>
+<div class="grid">
+<article class="card"><h2>Одобрено</h2><ul id="approvedPermissions"></ul></article>
+<article class="card"><h2>Нужно одобрить</h2><ul id="pendingPermissions"></ul></article>
+</div>
+<article class="card" id="otherPermissionsCard" hidden><h2>Другие статусы</h2><ul id="otherPermissions"></ul></article>
+<article class="card" id="macPermissionsCard" hidden><h2>Где проверить доступы macOS</h2><p class="muted">В «Системные настройки → Конфиденциальность и безопасность» откройте нужный раздел. Для записи напоминаний через AppleScript проверьте также «Автоматизация».</p></article>
+</section>
 <section id="settingsView" hidden><article class="card"><h2>Реестр моделей</h2><p class="muted">OpenAI-совместимые endpoints. В key_env укажите имя переменной *_API_KEY из приватного окружения. Для автовыбора задайте intents (имена намерений или default) и priority. timeout_seconds и cooldown_seconds ограничивают обращение и паузу после сбоя. Тарифы — за миллион токенов, daily_budget — суточный расчетный бюджет (0 отключает лимит). Расчет до запроса использует консервативную оценку по UTF-8 и максимальный ответ, включая неуспешные HTTP-вызовы. Валюта тарифов должна совпадать.</p><pre id="catalogueStatus" class="detail"></pre><textarea id="modelCatalogue" rows="13" spellcheck="false" aria-label="Реестр моделей JSON"></textarea><div class="actions"><button id="saveCatalogue">Сохранить реестр</button><button id="addCatalogueExample">Добавить пример локальной модели</button></div></article><article class="card"><h2>Модели и выполнение</h2><details><summary>Контракты инструментов</summary><pre id="toolCatalogue"></pre></details><p class="muted">Изменения применяются к следующим запускам. Ключи провайдеров хранятся отдельно, в приватной конфигурации.</p><form id="settingsForm"><label for="localModel">Идентификатор локальной модели</label><input id="localModel" required><label for="remoteModel">Идентификатор модели DeepSeek</label><input id="remoteModel" required><label><input id="remoteEnabled" type="checkbox"> Разрешить облачную модель для запросов, допускающих передачу данных</label><label><input id="filesEnabled" type="checkbox"> Файловые инструменты для разрешенных задач</label><label><input id="commandsEnabled" type="checkbox"> Команды и приложения для разрешенных задач</label><label><input id="webEnabled" type="checkbox"> Веб-поиск</label><label for="maxAttempts">Максимальное число попыток</label><input id="maxAttempts" type="number" min="1" max="10" required><label for="runTimeout">Лимит времени задачи, секунды</label><input id="runTimeout" type="number" min="10" max="3600" required><div class="actions"><button class="primary">Сохранить настройки</button></div></form><p id="settingsVersion" class="muted"></p></article></section>
 <section id="voicesView" hidden>
 <div class="card"><h2>Копия моего голоса</h2><p class="muted">Каждый вариант связывает эталон с конкретной моделью. Выбранный голос используется для новых озвучек в панели, MAX и Telegram.</p><p id="voiceActive" role="status">Загружаем профили…</p></div>
 <div id="voiceProfiles"></div>
 </section>
 <section id="vaultView" hidden>
-<div class="card"><h2>Секреты проекта</h2><p class="muted">Значения скрыты. После разблокировки нажми на глаз, чтобы загрузить и показать отдельный секрет. Изменения вступают в силу после перезапуска API.</p>
+<div class="card"><h2>Секреты проекта</h2><p class="muted">Для просмотра, редактирования и добавления нужен PIN. Для просмотра отдельного значения нажми на глаз. Изменения вступают в силу после перезапуска API.</p>
 <form id="vaultUnlockForm"><label for="vaultPin">PIN</label><input id="vaultPin" type="password" inputmode="numeric" pattern="[0-9]{6,12}" autocomplete="off" required><div class="actions"><button class="primary">Разблокировать</button></div></form>
-<button id="vaultLock" type="button" hidden>Заблокировать</button><p id="vaultNotice" role="status" aria-live="polite"></p></div>
-<div id="vaultEntries"></div><form id="vaultAdd" class="card" hidden><h2>Добавить ключ</h2><label for="vaultNewName">Имя, например CUSTOM_API_KEY</label><input id="vaultNewName" required autocomplete="off"><label for="vaultNewValue">Значение</label><input id="vaultNewValue" type="password" autocomplete="off" required><div class="actions"><button>Сохранить ключ</button></div></form>
+<div class="actions"><button id="vaultAddTrigger" type="button">Добавить секрет</button><button id="vaultLock" type="button" hidden>Заблокировать</button></div><p id="vaultState" class="muted">Хранилище заблокировано</p><p id="vaultNotice" role="status" aria-live="polite"></p></div>
+<form id="vaultAdd" class="card" hidden><h2>Добавить секрет</h2><label for="vaultNewName">Имя, например CUSTOM_API_KEY</label><input id="vaultNewName" required autocomplete="off"><label for="vaultNewValue">Значение</label><input id="vaultNewValue" type="password" autocomplete="off" required><div class="actions"><button>Сохранить ключ</button></div></form><div id="vaultEntries"></div>
 </section>
 <section id="runsView" hidden><div class="card"><h2>Последние запуски</h2><div class="table-wrap"><table><thead><tr><th>Задача</th><th>Источник</th><th>Состояние</th><th>Доставка</th><th>Создана</th></tr></thead><tbody id="runRows"></tbody></table></div></div><div id="runDetail" class="card" hidden><h2>Состояние запуска</h2><pre id="runEvents" class="detail"></pre><div id="deliveryActions" class="actions" hidden><button data-delivery="confirm_delivered">Ответ уже получен</button><button data-delivery="retry">Отправить повторно</button></div><p id="deliveryHint" class="muted" hidden>Предыдущая отправка не подтверждена. Проверьте чат перед повтором: сообщение могло быть доставлено.</p></div></section>
 <p id="notice" role="status" aria-live="polite"></p>
@@ -50,7 +59,7 @@
 const el=id=>document.getElementById(id);let csrf='',view='overview',pollTimer,selectedTask,conversationId='',settingsVersion=0,catalogueVersion=0,draftId='',editorHash='',projectTask='',memoryVersion=null,projectRecords=[],chatPending=false;
 const labels={queued:'В очереди',sending:'Отправляется',processing:'Выполняется',completed:'Завершена',failed:'Ошибка',cancelled:'Отменена'};
 function notice(text,error=false){const node=el(view==='vault'?'vaultNotice':'notice');node.textContent=text;node.className=error?'error':''}
-function showLogin(){clearVault();el('pinSetupPanel').hidden=true;el('voiceProfiles').replaceChildren();clearVoiceAudio();clearTimeout(pollTimer);el('shell').hidden=true;el('loginPanel').hidden=false;el('accessToken').focus()}
+function showLogin(){vaultAfterUnlock=null;clearVault();el('pinSetupPanel').hidden=true;el('voiceProfiles').replaceChildren();clearVoiceAudio();clearTimeout(pollTimer);el('shell').hidden=true;el('loginPanel').hidden=false;el('accessToken').focus()}
 async function api(url,options={}){const headers={...options.headers};if(options.method&&options.method!=='GET'){if(!(options.body instanceof FormData))headers['Content-Type']='application/json';if(csrf)headers['X-CSRF-Token']=csrf}const response=await fetch(url,{...options,headers});const data=await response.json();if(response.status===401&&url!=='/api/login')showLogin();if(!response.ok||data.success===false)throw Error(data.error||'Ошибка запроса');return data}
 function badge(id,ok,text){el(id).className='pill '+(ok?'ok':'bad');el(id).textContent=text}
 el('loadLog').onclick=async()=>{try{const data=await api('/api/logs?name='+encodeURIComponent(el('logName').value));el('logText').textContent=data.text}catch(error){notice(error.message,true)}};
@@ -67,8 +76,96 @@ el('newDraftBtn').onclick=async()=>{try{const data=await api('/api/project/draft
 el('saveProjectBtn').onclick=async()=>{try{const data=await api('/api/project/drafts/'+encodeURIComponent(draftId),{method:'POST',body:JSON.stringify({path:el('projectFile').value,content:el('projectEditor').value,sha256:editorHash})});editorHash=data.sha256;notice('Правка сохранена в копии');await refreshProjectStatus()}catch(error){notice(error.message,true)}};
 async function projectAction(action){if(['apply','rollback'].includes(action)&&!confirm(action==='apply'?'Применить проверенный diff и перезапустить сервер?':'Восстановить прежнюю версию и перезапустить сервер?'))return;try{const data=await api('/api/project/drafts/'+encodeURIComponent(draftId)+'/action',{method:'POST',body:JSON.stringify({action})});projectTask=data.task_id;notice('Действие поставлено в очередь');await refreshProjectStatus()}catch(error){notice(error.message,true)}}
 el('testProjectBtn').onclick=()=>projectAction('test');el('applyProjectBtn').onclick=()=>projectAction('apply');el('rollbackProjectBtn').onclick=()=>projectAction('rollback');
-async function loadBackground(){const data=await api('/api/background');el('backgroundServices').replaceChildren();for(const [name,label] of [['summary','Утренняя сводка'],['mood','Вопрос о настроении'],['notifications','Уведомления macOS']]){const row=document.createElement('div');row.className='actions';const text=document.createElement('span');text.textContent=label+' · '+(data.enabled[name]?'включено':'выключено');const button=document.createElement('button');button.textContent=data.enabled[name]?'Выключить':'Включить';button.onclick=async()=>{try{await api('/api/background',{method:'POST',body:JSON.stringify({name,enabled:!data.enabled[name],version:data.version})});await loadBackground()}catch(error){notice(error.message,true)}};row.append(text,button);el('backgroundServices').append(row)}}
-async function loadAutomations(){await loadBackground();const links=await api('/api/identities');el('automationChannel').replaceChildren(new Option('Диалог в панели',''));for(const link of links.links.filter(l=>l.state==='active'&&l.conversation_id))el('automationChannel').append(new Option(link.channel+' · '+link.sender+' · '+link.chat,link.id));const data=await api('/api/automations');el('automationList').replaceChildren();for(const item of data.automations){const card=document.createElement('article');card.className='card';const title=document.createElement('h2');title.textContent=item.config.title;const info=document.createElement('p');info.textContent=(item.enabled?'Включено':'Отключено')+' · следующий запуск: '+new Date(item.next_due*1000).toLocaleString();const prompt=document.createElement('p');prompt.textContent=item.config.prompt;const button=document.createElement('button');button.textContent=item.enabled?'Отключить':'Включить';button.onclick=async()=>{try{await api('/api/automations',{method:'POST',body:JSON.stringify({id:item.id,enabled:!item.enabled,revision:item.revision})});await loadAutomations()}catch(error){notice(error.message,true)}};card.append(title,info,prompt,button);el('automationList').append(card)}}
+function scheduleControls(label, enabled, update, deletedMessage){
+    const controls=document.createElement('div');
+    const actions=document.createElement('div');
+    actions.className='actions';
+    const toggle=document.createElement('button'), remove=document.createElement('button');
+    toggle.textContent=enabled?'Отключить':'Включить';
+    remove.textContent='Удалить';
+    const confirmation=document.createElement('div');
+    confirmation.hidden=true;
+    const warning=document.createElement('p');
+    warning.textContent='Удалить «'+label+'»? История сохранится. Задания, уже добавленные в очередь, продолжат выполнение.';
+    const confirmActions=document.createElement('div');
+    confirmActions.className='actions';
+    const cancel=document.createElement('button'), confirmDelete=document.createElement('button');
+    cancel.textContent='Отмена';
+    confirmDelete.textContent='Подтвердить удаление';
+    confirmActions.append(cancel,confirmDelete);
+    confirmation.append(warning,confirmActions);
+    async function change(fields){
+        toggle.disabled=remove.disabled=cancel.disabled=confirmDelete.disabled=true;
+        try{
+            await update(fields);
+            if(fields.action==='delete')notice(deletedMessage);
+        }catch(error){notice(error.message,true)}
+        finally{toggle.disabled=remove.disabled=cancel.disabled=confirmDelete.disabled=false}
+    }
+    toggle.onclick=()=>change({enabled:!enabled});
+    remove.onclick=()=>{
+        actions.hidden=true;
+        confirmation.hidden=false;
+        cancel.focus();
+    };
+    cancel.onclick=()=>{
+        confirmation.hidden=true;
+        actions.hidden=false;
+        remove.focus();
+    };
+    confirmDelete.onclick=()=>change({action:'delete'});
+    actions.append(toggle,remove);
+    controls.append(actions,confirmation);
+    return controls;
+}
+async function loadBackground(){
+    const {enabled,deleted=[],version}=await api('/api/background');
+    const list=el('backgroundServices');
+    list.replaceChildren();
+    for(const [name,label] of [['summary','Утренняя сводка'],['mood','Вопрос о настроении'],['notifications','Уведомления macOS']]){
+        if(deleted.includes(name))continue;
+        const row=document.createElement('div');
+        row.className='actions';
+        const text=document.createElement('span');
+        text.textContent=label+' · '+(enabled[name]?'включено':'выключено');
+        row.append(text,scheduleControls(label,enabled[name],async fields=>{
+            await api('/api/background',{method:'POST',body:JSON.stringify({name,version,...fields})});
+            await loadBackground();
+        },'Фоновый сервис удалён'));
+        list.append(row);
+    }
+    if(!list.childElementCount)list.textContent='Системных фоновых сервисов нет.';
+}
+async function loadAutomations(){
+    await loadBackground();
+    const {links}=await api('/api/identities');
+    el('automationChannel').replaceChildren(new Option('Диалог в панели',''));
+    for(const link of links.filter(l=>l.state==='active'&&l.conversation_id)){
+        el('automationChannel').append(new Option(link.channel+' · '+link.sender+' · '+link.chat,link.id));
+    }
+    await refreshAutomations();
+}
+async function refreshAutomations(){
+    const {automations}=await api('/api/automations');
+    const list=el('automationList');
+    list.replaceChildren();
+    if(!automations.length)list.textContent='Автоматизаций пока нет.';
+    for(const item of automations){
+        const card=document.createElement('article');
+        card.className='card';
+        const title=document.createElement('h2');
+        title.textContent=item.config.title;
+        const info=document.createElement('p');
+        info.textContent=item.enabled?'Включено · следующий запуск: '+new Date(item.next_due*1000).toLocaleString():'Отключено';
+        const prompt=document.createElement('p');
+        prompt.textContent=item.config.prompt;
+        card.append(title,info,prompt,scheduleControls(item.config.title,item.enabled,async fields=>{
+            await api('/api/automations',{method:'POST',body:JSON.stringify({id:item.id,revision:item.revision,...fields})});
+            await refreshAutomations();
+        },'Расписание удалено'));
+        list.append(card);
+    }
+}
 el('automationForm').onsubmit=async event=>{event.preventDefault();const kind=el('automationKind').value;const config={title:el('automationTitle').value,prompt:el('automationPrompt').value,project_id:selectedProject()||null,channel_link:el('automationChannel').value||null,kind,missed:el('automationMissed').value,...(kind==='daily'?{time:el('automationTime').value,timezone:el('automationZone').value}:{interval:Number(el('automationInterval').value)})};try{await api('/api/automations',{method:'POST',body:JSON.stringify({action:'create',config})});await loadAutomations();notice('Расписание сохранено')}catch(error){notice(error.message,true)}};
 async function identityAction(values){await api('/api/identities',{method:'POST',body:JSON.stringify(values)});await loadIdentities()}
 el('issueLink').onclick=async()=>{try{const data=await api('/api/identities',{method:'POST',body:JSON.stringify({action:'issue',channel:el('linkChannel').value})});el('linkCode').textContent=data.command}catch(error){notice(error.message,true)}};
@@ -85,6 +182,57 @@ el('refreshSources').onclick=()=>loadSources().catch(error=>notice(error.message
 async function loadCatalogue(){const data=await api('/api/models');catalogueVersion=data.version;el('catalogueStatus').textContent=(data.availability||[]).map(model=>model.id+' · '+(model.credential_configured?'ключ настроен / не нужен':'ключ не настроен')+' · пауза: '+model.cooldown_seconds+' с · резерв расходов сегодня: '+model.reserved_cost_today.toFixed(6)).join('\n');el('modelCatalogue').value=JSON.stringify(data.models,null,2);const select=el('modelTarget'),previous=select.value;select.querySelectorAll('[data-registered]').forEach(option=>option.remove());for(const model of data.models){if(model.enabled===false)continue;const option=document.createElement('option');option.dataset.registered='true';option.value='model:'+model.id;option.textContent=model.id+(model.local?' · локально':' · история в облако');select.append(option)}if([...select.options].some(o=>o.value===previous))select.value=previous}
 el('saveCatalogue').onclick=async()=>{try{await api('/api/models',{method:'POST',body:JSON.stringify({version:catalogueVersion,models:JSON.parse(el('modelCatalogue').value)})});await loadCatalogue();notice('Реестр сохранен')}catch(error){notice(error.message,true)}};
 el('addCatalogueExample').onclick=()=>{try{const models=JSON.parse(el('modelCatalogue').value||'[]');models.push({id:'local-extra',model:'model-id',base_url:'http://127.0.0.1:1234/v1',local:true,key_env:'',context_tokens:32768,output_tokens:4096,tools:true,enabled:true,input_price:0,output_price:0,daily_budget:0});el('modelCatalogue').value=JSON.stringify(models,null,2)}catch(error){notice(error.message,true)}};
+async function loadPermissions(){
+    const data=await api('/api/permissions');
+    const approved=[], pending=[], other=[];
+    for(const [key,label,scope] of [
+        ['files','Доступ к файлам','панель с разрешением на задачу и чаты MAX/веб из списка доступа'],
+        ['commands','Выполнение команд','панель с разрешением на задачу и чаты MAX/веб из списка доступа'],
+        ['web','Веб-инструменты','доступ зависит от контекста задачи']
+    ]){
+        if(data.tools[key])approved.push(label+' · включено · '+scope);
+        else other.push(label+' · отключено в настройках ассистента');
+    }
+    for(const link of data.links){
+        const channel=link.channel==='max'?'MAX':'Telegram';
+        const account=channel+' · отправитель '+link.sender+' · чат '+link.chat;
+        if(link.state==='pending')pending.push(account+' · подтвердите привязку в разделе «Каналы»');
+        if(link.state==='active')approved.push(account+' · привязка подтверждена'+(link.shared_memory?' · общая память':''));
+    }
+    el('macPermissionsCard').hidden=!data.macos;
+    if(data.macos){
+        const contacts={
+            approved:'Контакты macOS · доступ предоставлен',
+            limited:'Контакты macOS · частичный доступ',
+            pending:'Контакты macOS · ожидается решение в macOS',
+            denied:'Контакты macOS · доступ отклонён в macOS',
+            restricted:'Контакты macOS · доступ ограничен системой',
+            unknown:'Контакты macOS · статус не удалось определить'
+        };
+        const status=data.macos.contacts;
+        if(status==='approved'||status==='limited')approved.push(contacts[status]);
+        else if(status==='pending')pending.push(contacts[status]);
+        else other.push(contacts[status]||contacts.unknown);
+        other.push('Календарь, Напоминания и Автоматизация macOS · проверьте в системных настройках');
+    }
+    for(const [id,items,empty] of [
+        ['approvedPermissions',approved,'Одобренных доступов нет.'],
+        ['pendingPermissions',pending,'Запросов на одобрение нет.'],
+        ['otherPermissions',other,'']
+    ]){
+        const list=el(id);
+        list.replaceChildren();
+        for(const text of items.length?items:[empty]){
+            const item=document.createElement('li');
+            item.textContent=text;
+            list.append(item);
+        }
+    }
+    el('otherPermissionsCard').hidden=!other.length;
+}
+el('refreshPermissions').onclick=()=>loadPermissions().catch(error=>notice(error.message,true));
+el('permissionToolSettings').onclick=()=>setView('settings');
+el('permissionChannelSettings').onclick=()=>setView('identities');
 async function loadSettings(){await loadCatalogue();const tools=await api('/api/tools');el('toolCatalogue').textContent=tools.tools.map(tool=>tool.name+' · право: '+tool.permission+' · эффект: '+tool.effect+' · повтор: '+tool.retry+' · тайм-аут: '+tool.timeout_seconds+' с').join('\n');const data=await api('/api/settings');settingsVersion=data.version;el('localModel').value=data.values.local_model;el('remoteModel').value=data.values.remote_model;el('remoteEnabled').checked=data.values.remote_enabled;el('filesEnabled').checked=data.values.file_tools_enabled;el('commandsEnabled').checked=data.values.commands_enabled;el('webEnabled').checked=data.values.web_enabled;el('maxAttempts').value=data.values.max_attempts;el('runTimeout').value=data.values.run_timeout;el('settingsVersion').textContent='Версия настроек: '+data.version}
 el('settingsForm').onsubmit=async event=>{event.preventDefault();try{const values={local_model:el('localModel').value,remote_model:el('remoteModel').value,remote_enabled:el('remoteEnabled').checked,file_tools_enabled:el('filesEnabled').checked,commands_enabled:el('commandsEnabled').checked,web_enabled:el('webEnabled').checked,max_attempts:Number(el('maxAttempts').value),run_timeout:Number(el('runTimeout').value)};await api('/api/settings',{method:'POST',body:JSON.stringify({version:settingsVersion,values})});await loadSettings();notice('Настройки сохранены')}catch(error){notice(error.message,true)}};
 el('cancelCurrent').onclick=async()=>{try{const taskId=el('taskId').value;const data=await api('/api/task/'+encodeURIComponent(taskId)+'/cancel',{method:'POST',body:'{}'});notice(data.message);el('cancelCurrent').hidden=true}catch(error){notice(error.message,true)}};
@@ -94,7 +242,44 @@ async function showConversation(){el('chatHistory').replaceChildren();if(!conver
 el('conversationSelect').onchange=async()=>{conversationId=el('conversationSelect').value;el('taskId').value='';el('result').textContent='';el('resultSources').replaceChildren();try{await showConversation()}catch(error){notice(error.message,true)}};
 async function openDocument(id,referenceUrl){const url=referenceUrl||'/api/knowledge/'+encodeURIComponent(id)+scopeQuery();const data=await api(url);el('documentCard').hidden=false;el('documentTitle').textContent=data.document.title+' · версия '+data.document.version;el('documentText').textContent=data.document.chunks.map(chunk=>'Строки '+chunk.line_start+'–'+chunk.line_end+'\n'+chunk.content).join('\n\n')}
 async function refreshKnowledge(){const data=await api('/api/knowledge'+scopeQuery());el('knowledgeList').replaceChildren();if(!data.documents.length)el('knowledgeList').textContent='Документы еще не добавлены.';for(const doc of data.documents){const row=document.createElement('div');row.className='actions';const open=document.createElement('button');open.textContent=doc.title+' · v'+doc.version+' · '+({text_ready:'текстовый поиск',hybrid_ready:'гибридный поиск',embedding_failed_text_ready:'эмбеддинги недоступны; текстовый поиск работает'}[doc.status]||doc.status);open.onclick=()=>openDocument(doc.id).catch(error=>notice(error.message,true));const remove=document.createElement('button');remove.textContent='Удалить';remove.onclick=async()=>{if(!confirm('Удалить '+doc.title+' и его поисковый индекс? Сохраните исходный файл для повторной загрузки.'))return;try{await api('/api/knowledge/'+encodeURIComponent(doc.id)+scopeQuery(),{method:'DELETE'});el('documentCard').hidden=true;await refreshKnowledge()}catch(error){notice(error.message,true)}};row.append(open,remove);el('knowledgeList').append(row)}}
-el('knowledgeFile').onchange=async()=>{const file=el('knowledgeFile').files[0];if(!file)return;try{if(file.size>512*1024)throw Error('Файл превышает 512 КБ');notice('Индексирование документа…');const text=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());const data=await api('/api/knowledge',{method:'POST',body:JSON.stringify({title:file.name,text,project_id:selectedProject()||null})});notice('Документ добавлен: '+data.document.chunks+' фрагментов');await refreshKnowledge()}catch(error){notice(error.message,true)}finally{el('knowledgeFile').value=''}};
+const knowledgePicker=el('knowledgeFile'), knowledgeUploadButton=el('knowledgeUploadButton');
+const knowledgeUploadStatus=el('knowledgeUploadStatus');
+knowledgePicker.onchange=()=>{
+    const file=knowledgePicker.files[0];
+    const richDocument=file&&/\.(rtf|docx|pdf)$/i.test(file.name);
+    let error='';
+    if(file){
+        if(!richDocument&&!/\.(txt|md|markdown)$/i.test(file.name))error='Поддерживаются TXT, Markdown, RTF, DOCX и PDF.';
+        else if(file.size>(richDocument?20*1024*1024:512*1024))error='Размер файла превышает '+(richDocument?'20 МБ.':'512 КБ.');
+    }
+    knowledgeUploadButton.disabled=!file||!!error;
+    knowledgeUploadStatus.className=error?'error':'';
+    knowledgeUploadStatus.textContent=file?file.name+' — '+(error||'готов к загрузке.'):'Файл не выбран.';
+};
+el('knowledgeUploadForm').onsubmit=async event=>{
+    event.preventDefault();
+    const file=knowledgePicker.files[0], project=selectedProject();
+    if(!file||knowledgeUploadButton.disabled)return;
+    knowledgePicker.disabled=knowledgeUploadButton.disabled=true;
+    knowledgeUploadStatus.className='';
+    knowledgeUploadStatus.textContent='Индексируется «'+file.name+'»…';
+    try{
+        const form=new FormData();
+        form.append('file',file);
+        if(project)form.append('project_id',project);
+        const data=await api('/api/knowledge',{method:'POST',body:form});
+        knowledgePicker.value='';
+        knowledgeUploadStatus.textContent='«'+file.name+'» добавлен. Фрагментов: '+data.document.chunks+'.';
+        if(project!==selectedProject())knowledgeUploadStatus.textContent+=' Откройте проект, выбранный при загрузке.';
+        else await refreshKnowledge().catch(()=>{knowledgeUploadStatus.textContent+=' Обновите страницу, чтобы увидеть документ в списке.'});
+    }catch(error){
+        knowledgeUploadStatus.className='error';
+        knowledgeUploadStatus.textContent='Не удалось добавить «'+file.name+'». '+error.message;
+    }finally{
+        knowledgePicker.disabled=false;
+        knowledgeUploadButton.disabled=!knowledgePicker.files.length;
+    }
+};
 el('knowledgeSearchForm').onsubmit=async event=>{event.preventDefault();try{const data=await api('/api/knowledge/search',{method:'POST',body:JSON.stringify({query:el('knowledgeQuery').value,project_id:selectedProject()||null})});el('knowledgeResults').textContent=data.results.length?data.results.map(hit=>hit.title+' '+hit.citation+((hit.retrieval||[]).length?' · '+hit.retrieval.map(method=>method==='semantic'?'по смыслу':'по словам').join(' + '):'')+'\n'+hit.content).join('\n\n'):'Подходящие фрагменты не найдены.'}catch(error){notice(error.message,true)}};
 async function refreshRuns(){const data=await api('/api/runs');el('runRows').replaceChildren();for(const run of data.runs){const row=document.createElement('tr'),cell=document.createElement('td'),button=document.createElement('button');button.className='link';button.textContent=run.task_id;button.onclick=()=>openRun(run.task_id,run.delivery_uncertain);cell.append(button);row.append(cell);for(const text of [run.source,labels[run.status]||run.status,run.delivery_uncertain?'Требует проверки':run.delivered?'Доставлено':'—',run.timestamp?new Date(run.timestamp).toLocaleString():'—']){const td=document.createElement('td');td.textContent=text||'—';row.append(td)}el('runRows').append(row)}if(!data.runs.length){const row=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=5;cell.textContent='Запусков пока нет.';row.append(cell);el('runRows').append(row)}}
 async function openRun(taskId,uncertain){selectedTask=taskId;const data=await api('/task_status/'+encodeURIComponent(taskId));el('runDetail').hidden=false;el('runEvents').textContent=JSON.stringify(data,null,2);el('deliveryActions').hidden=!uncertain;el('deliveryHint').hidden=!uncertain}
@@ -143,7 +328,7 @@ async function loadVoices(data){
     }
 }
 async function refresh(){clearTimeout(pollTimer);if(el('shell').hidden)return;try{if(view==='overview')await refreshOverview();if(view==='runs')await refreshRuns();if(view==='project')await refreshProjectStatus();if(view==='chat'&&el('taskId').value)await getResult()}catch(error){notice(error.message,true)}if(!el('shell').hidden)pollTimer=setTimeout(refresh,view==='chat'&&chatPending?750:4000)}
-function setView(next){if(view==='vault'&&next!=='vault')lockVault();if(view==='voices'&&next!=='voices'){el('voiceProfiles').replaceChildren();clearVoiceAudio()}view=next;for(const name of ['overview','chat','runs','knowledge','settings','project','memory','identities','automations','voices','vault'])el(name+'View').hidden=name!==view;document.querySelectorAll('[data-view]').forEach(button=>{if(button.dataset.view===view)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current')});el('pageTitle').textContent={vault:'Секреты',voices:'Голос',automations:'Расписания',identities:'Каналы',overview:'Инфраструктура',chat:'Диалоги',runs:'Запуски',knowledge:'Знания',settings:'Настройки',project:'Проект',memory:'Память'}[view];notice('');if(view==='vault')loadVault().catch(error=>notice(error.message,true));if(view==='overview')loadMaintenance();if(view==='voices')loadVoices().catch(error=>notice(error.message,true));if(view==='automations')loadAutomations().catch(error=>notice(error.message,true));if(view==='identities')loadIdentities().catch(error=>notice(error.message,true));if(view==='memory')loadMemory().catch(error=>notice(error.message,true));if(view==='project')loadProject().catch(error=>notice(error.message,true));if(view==='settings')loadSettings().catch(error=>notice(error.message,true));if(view==='chat')loadCatalogue().catch(error=>notice(error.message,true));if(view==='chat')refreshConversations().catch(error=>notice(error.message,true));if(view==='knowledge')loadSources().catch(error=>notice(error.message,true));if(view==='knowledge')refreshKnowledge().catch(error=>notice(error.message,true));refresh()}
+function setView(next){if(view==='vault'&&next!=='vault')lockVault();if(view==='voices'&&next!=='voices'){el('voiceProfiles').replaceChildren();clearVoiceAudio()}view=next;for(const name of ['overview','chat','runs','knowledge','settings','permissions','project','memory','identities','automations','voices','vault'])el(name+'View').hidden=name!==view;document.querySelectorAll('[data-view]').forEach(button=>{if(button.dataset.view===view)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current')});el('pageTitle').textContent={vault:'Секреты',voices:'Голос',automations:'Расписания',identities:'Каналы',overview:'Инфраструктура',chat:'Диалоги',runs:'Запуски',knowledge:'Знания',settings:'Настройки',permissions:'Разрешения',project:'Проект',memory:'Память'}[view];notice('');if(view==='vault')loadVault().catch(error=>notice(error.message,true));if(view==='overview')loadMaintenance();if(view==='voices')loadVoices().catch(error=>notice(error.message,true));if(view==='automations')loadAutomations().catch(error=>notice(error.message,true));if(view==='identities')loadIdentities().catch(error=>notice(error.message,true));if(view==='memory')loadMemory().catch(error=>notice(error.message,true));if(view==='project')loadProject().catch(error=>notice(error.message,true));if(view==='settings')loadSettings().catch(error=>notice(error.message,true));if(view==='permissions')loadPermissions().catch(error=>notice(error.message,true));if(view==='chat')loadCatalogue().catch(error=>notice(error.message,true));if(view==='chat')refreshConversations().catch(error=>notice(error.message,true));if(view==='knowledge')loadSources().catch(error=>notice(error.message,true));if(view==='knowledge')refreshKnowledge().catch(error=>notice(error.message,true));refresh()}
 document.querySelectorAll('[data-view]').forEach(button=>button.onclick=()=>setView(button.dataset.view));
 el('loginForm').onsubmit=async event=>{event.preventDefault();try{const data=await api('/api/login',{method:'POST',body:JSON.stringify({token:el('accessToken').value})});csrf=data.csrf||'';el('accessToken').value='';el('loginNotice').textContent='';await initialize()}catch(error){el('loginNotice').textContent=error.message}};
 el('logoutBtn').onclick=async()=>{try{await api('/api/logout',{method:'POST',body:'{}'});showLogin()}catch(error){notice(error.message,true)}};
@@ -154,23 +339,70 @@ el('audioForm').onsubmit=async event=>{event.preventDefault();const form=new For
 el('speakAnswer').onclick=async()=>{try{const id=el('taskId').value;if(!id)throw Error('Сначала выберите ответ');const data=await api('/api/task/'+encodeURIComponent(id)+'/speech',{method:'POST',body:'{}'});notice('Озвучивание поставлено в очередь');let tries=0;const pollSpeech=async()=>{try{const result=await api('/api/result?task_id='+encodeURIComponent(data.task_id));if(result.status==='completed'){el('speechPlayer').src='/api/task/'+encodeURIComponent(data.task_id)+'/speech';el('speechPlayer').hidden=false;notice(result.result);return}if(result.status==='failed')throw Error(result.error||'Озвучивание не выполнено');if(++tries<100)setTimeout(pollSpeech,2000);else notice('Проверьте статус озвучивания в запусках')}catch(error){notice(error.message,true)}};pollSpeech()}catch(error){notice(error.message,true)}};
 el('taskForm').onsubmit=async event=>{event.preventDefault();el('sendBtn').disabled=true;try{const payload={message:el('message').value,project_id:selectedProject()||null,model_target:el('modelTarget').value,allow_tools:el('allowTools').checked,use_knowledge:el('useKnowledge').checked};if(conversationId)payload.conversation_id=conversationId;const data=await api('/api/chat',{method:'POST',body:JSON.stringify(payload)});conversationId=data.conversation_id;await refreshConversations();el('taskId').value=data.task_id;notice('Задача зарегистрирована · '+data.run_id);await getResult();el('message').value=''}catch(error){notice(error.message,true)}finally{el('sendBtn').disabled=false}};
 el('resultBtn').onclick=()=>getResult().catch(error=>notice(error.message,true));el('copyBtn').onclick=()=>navigator.clipboard.writeText(el('result').textContent).catch(error=>notice(error.message,true));
-let vaultTimer;
-function clearVault(){clearTimeout(vaultTimer);el('vaultEntries').replaceChildren();el('vaultNewValue').value='';el('vaultPin').value='';el('vaultLock').hidden=true;el('vaultAdd').hidden=true;el('vaultUnlockForm').hidden=false}
-async function lockVault(){clearVault();await api('/api/vault/lock',{method:'POST',body:'{}'}).catch(()=>{})}
-async function loadVault(){
-    const data=await api('/api/vault');
-    if(view!=='vault'||el('shell').hidden)return;
+let vaultTimer, vaultUnlocked=false, vaultAfterUnlock=null;
+let vaultLockRequest=Promise.resolve(), vaultUnlockRequest=Promise.resolve();
+function clearVault(){
+    clearTimeout(vaultTimer);
+    vaultUnlocked=false;
+    el('vaultEntries').replaceChildren();
+    el('vaultNewName').value='';
+    el('vaultNewValue').value='';
+    el('vaultPin').value='';
+    el('vaultLock').hidden=true;
+    el('vaultAdd').hidden=true;
+    el('vaultUnlockForm').hidden=false;
+    el('vaultState').textContent='Хранилище заблокировано';
+}
+function withVaultAccess(action){
+    if(vaultUnlocked){action();return}
+    vaultAfterUnlock=action;
+    notice('Введи PIN, чтобы продолжить.');
+    el('vaultPin').focus();
+}
+function showMaskedVault(entries){
+    for(const entry of entries){
+        const row=document.createElement('div');row.className='card';
+        const label=document.createElement('p');
+        label.textContent=entry.name+' · '+(entry.configured?'••••••••':'Не задан');
+        const actions=document.createElement('div');actions.className='actions';
+        const eye=document.createElement('button');eye.type='button';eye.textContent='👁';
+        eye.setAttribute('aria-label','Показать '+entry.name);
+        eye.onclick=()=>withVaultAccess(()=>el('reveal-'+entry.name)?.click());
+        actions.append(eye);
+        if(entry.editable){
+            const edit=document.createElement('button');edit.type='button';edit.textContent='Изменить';
+            edit.onclick=()=>withVaultAccess(()=>el('secret-'+entry.name)?.focus());
+            actions.append(edit);
+        }else{
+            const note=document.createElement('span');note.textContent='Задан окружением процесса';actions.append(note);
+        }
+        row.append(label,actions);el('vaultEntries').append(row);
+    }
+}
+function lockVault(){
+    vaultAfterUnlock=null;
     clearVault();
-    if(!data.unlocked)return;
-    el('vaultUnlockForm').hidden=true;el('vaultLock').hidden=false;el('vaultAdd').hidden=false;
-    vaultTimer=setTimeout(clearVault, Math.max(0,data.expires_in*1000));
+    vaultLockRequest=Promise.allSettled([vaultLockRequest,vaultUnlockRequest])
+        .then(()=>api('/api/vault/lock',{method:'POST',body:'{}'})).catch(()=>{});
+    return vaultLockRequest;
+}
+async function loadVault(){
+    await vaultLockRequest;
+    const data=await api('/api/vault');
+    if(view!=='vault'||el('shell').hidden)return false;
+    clearVault();
+    if(!data.unlocked){showMaskedVault(data.entries);return false}
+    vaultUnlocked=true;
+    el('vaultUnlockForm').hidden=true;el('vaultLock').hidden=false;
+    el('vaultState').textContent='Хранилище разблокировано. Можно изменять и добавлять секреты.';
+    vaultTimer=setTimeout(()=>{clearVault();if(view==='vault')showMaskedVault(data.entries)}, Math.max(0,data.expires_in*1000));
     for(const entry of data.entries){
         const card=document.createElement('form');card.className='card';
         const label=document.createElement('label');label.textContent=entry.name;
         const input=document.createElement('input');input.type='password';input.autocomplete='off';input.spellcheck=false;input.placeholder=entry.configured?'••••••••':'Не задан';input.readOnly=!entry.editable;
         input.id='secret-'+entry.name;label.htmlFor=input.id;card.append(label,input);
         const actions=document.createElement('div');actions.className='actions';
-        const eye=document.createElement('button');eye.type='button';eye.textContent='👁';eye.setAttribute('aria-label','Показать '+entry.name);eye.title='Показать';
+        const eye=document.createElement('button');eye.type='button';eye.id='reveal-'+entry.name;eye.textContent='👁';eye.setAttribute('aria-label','Показать '+entry.name);eye.title='Показать';
         let revealed=false;
         input.oninput=()=>{revealed=false};
         eye.onclick=async()=>{try{
@@ -185,19 +417,32 @@ async function loadVault(){
         }else{const note=document.createElement('span');note.textContent='Задан окружением процесса';actions.append(note)}
         card.append(actions);el('vaultEntries').append(card)
     }
+    return true;
 }
 async function saveSecret(name,value){await api('/api/vault',{method:'POST',body:JSON.stringify({action:'save',name,value})});notice('Сохранено. Перезапусти API, чтобы применить значение.')}
-el('vaultLock').onclick=async()=>{await lockVault();notice('Хранилище заблокировано.')};
-el('vaultUnlockForm').onsubmit=async event=>{event.preventDefault();const pin=el('vaultPin').value;el('vaultPin').value='';notice('');try{await api('/api/vault/unlock',{method:'POST',body:JSON.stringify({pin})});await loadVault()}catch(error){notice(error.message,true)}};
+el('vaultAddTrigger').onclick=()=>withVaultAccess(()=>{el('vaultAdd').hidden=false;el('vaultNewName').focus()});
+el('vaultLock').onclick=async()=>{await lockVault();try{await loadVault();notice('Хранилище заблокировано.')}catch(error){notice(error.message,true)}};
+el('vaultUnlockForm').onsubmit=async event=>{
+    event.preventDefault();const pin=el('vaultPin').value;el('vaultPin').value='';notice('');
+    try{
+        vaultUnlockRequest=api('/api/vault/unlock',{method:'POST',body:JSON.stringify({pin})});
+        await vaultUnlockRequest;
+        if(await loadVault()){
+            const action=vaultAfterUnlock;vaultAfterUnlock=null;
+            action?.();
+        }
+    }catch(error){notice(error.message,true)}
+};
 el('vaultAdd').onsubmit=async event=>{event.preventDefault();try{await saveSecret(el('vaultNewName').value.trim(),el('vaultNewValue').value);el('vaultNewName').value='';await loadVault()}catch(error){notice(error.message,true)}};
 el('pinSetupForm').onsubmit=async event=>{event.preventDefault();const pin=el('newPin').value,confirmation=el('confirmPin').value;el('newPin').value='';el('confirmPin').value='';try{await api('/api/vault/setup',{method:'POST',body:JSON.stringify({pin,confirmation})});await initialize()}catch(error){el('pinSetupNotice').textContent=error.message}};
 el('pinSetupLogout').onclick=()=>el('logoutBtn').click();
 async function loadMaintenance(){try{
     const data=await api('/api/maintenance'), last=data.last;
     const actions={none:'Сбоев не найдено',review:'Требуется разбор',already_healthy:'Локальная модель уже работает',restarted_healthy:'Модель восстановлена, сервер проверен',model_recovered_busy:'Модель восстановлена; сервер занят',recovery_unavailable:'Восстановление недоступно',restart_failed:'Не удалось перезапустить',restart_unverified:'Сервер не подтвердил готовность',started:'Проверка начата'};
-    el('maintenanceReport').textContent=last?last.day+' · '+(actions[last.action]||last.action)+' · случаев: '+last.total+(last.issues.length?'\nЗадачи: '+last.issues.map(item=>item.task_id).join(', '):''):'Отчета еще нет. Следующая проверка — в 04:00 по Москве.';
+    const reasons={delivery_uncertain:'доставка не подтверждена',task_error:'ошибка задачи',tool_markup:'служебный ответ',request_unfulfilled:'просьба не выполнена',command_error:'ошибка команды',tool_error:'ошибка инструмента',unverified_action:'действие не подтверждено',local_model_offline:'локальная модель недоступна'};
+    el('maintenanceReport').textContent=last?last.day+' · '+(actions[last.action]||last.action)+' · случаев: '+last.total+(last.issues.length?'\nЗадачи: '+last.issues.map(item=>item.task_id+(reasons[item.reason||item.kind]?' · '+reasons[item.reason||item.kind]:'')).join('\n'):''):'Отчета еще нет. Следующая проверка — в 04:00 по Москве.';
 }catch(error){el('maintenanceReport').textContent='Отчет недоступен.'}}
-async function initialize(){try{const data=await api('/api/session');csrf=data.csrf||'';el('loginPanel').hidden=true;el('pinSetupPanel').hidden=!data.pin_setup_required;el('shell').hidden=!!data.pin_setup_required;if(data.pin_setup_required){el('newPin').focus();return}el('logoutBtn').hidden=!data.authentication_enabled;await loadProjects();if(view==='overview')loadMaintenance();await refresh()}catch(error){showLogin()}}
+async function initialize(){try{const data=await api('/api/session');csrf=data.csrf||'';el('loginPanel').hidden=true;el('pinSetupPanel').hidden=!data.pin_setup_required;el('shell').hidden=!!data.pin_setup_required;if(data.pin_setup_required){el('newPin').focus();return}el('logoutBtn').hidden=!data.authentication_enabled;await loadProjects();if(view==='overview')loadMaintenance();if(view==='vault')await loadVault();await refresh()}catch(error){showLogin()}}
 initialize();
 </script>
 </body></html>

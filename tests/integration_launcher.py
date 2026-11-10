@@ -62,6 +62,7 @@ def main():
             MEMORY_ENABLED='false', CODE_CHANGES_ENABLED='false', FS_ENABLED='false',
             COMMANDS_ENABLED='false', WEB_ENABLED='false', VOICE_ENABLED='false',
             HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1')
+        environment.pop('PANEL_SMOKE_API_KEY', None)
         pid = None
         try:
             launch = subprocess.run([str(root / '.venv/bin/python'), str(root / 'launch_server.py')],
@@ -94,13 +95,63 @@ def main():
                 vault = browser.get(panel_url + '/api/vault', timeout=3)
                 assert vault.ok and vault.headers['Cache-Control'] == 'no-store'
                 assert requests.get(panel_url + '/api/vault', headers=headers, timeout=3).status_code == 401
+                assert browser.post(panel_url + '/api/vault/lock', headers=csrf, json={}, timeout=3).ok
+                masked = browser.get(panel_url + '/api/vault', timeout=3).json()
+                assert not masked['unlocked'] and any(entry['editable'] for entry in masked['entries'])
+                key = {'action':'save', 'name':'PANEL_SMOKE_API_KEY', 'value':'synthetic-initial-value'}
+                assert browser.post(panel_url + '/api/vault', headers=csrf, json=key, timeout=3).status_code == 403
+                assert browser.post(panel_url + '/api/vault/unlock', headers=csrf, json={'pin':pin['pin']}, timeout=3).ok
+                assert browser.post(panel_url + '/api/vault', headers=csrf, json=key, timeout=3).ok
+                edited = {**key, 'value':'synthetic-updated-value'}
+                assert browser.post(panel_url + '/api/vault', headers=csrf, json=edited, timeout=3).ok
+                revealed = browser.post(panel_url + '/api/vault', headers=csrf,
+                                        json={'action':'reveal','name':key['name']}, timeout=3)
+                assert revealed.json()['value'] == edited['value']
+                model = dict(id='vault-smoke', model='stub', base_url=f'http://127.0.0.1:{api_port}/v1',
+                             local=True, key_env=key['name'])
+                assert browser.post(panel_url + '/api/models', headers=csrf, json={'version':0, 'models':[model]}, timeout=3).ok
+                assert not browser.get(panel_url + '/api/models', timeout=3).json()['availability'][0]['credential_configured']
                 for path in ('/api/runs', '/api/conversations', '/api/identities', '/api/maintenance'):
                     assert browser.get(panel_url + path, timeout=3).json()['success']
+                automations_url = panel_url + '/api/automations'
+                config = dict(title='Schedule smoke', prompt='Test prompt', kind='interval', interval=3600)
+                created = browser.post(automations_url, headers=csrf, json={'action':'create','config':config}, timeout=3)
+                created.raise_for_status()
+                schedule_id = created.json()['id']
+                deletion = dict(action='delete', id=schedule_id, revision=1)
+                assert browser.post(automations_url, json=deletion, timeout=3).status_code == 403
+                assert browser.post(automations_url, headers=csrf, json={**deletion,'revision':0}, timeout=3).status_code == 409
+                assert browser.post(automations_url, headers=csrf, json=deletion, timeout=3).ok
+                assert all(item['id'] != schedule_id for item in browser.get(automations_url, timeout=3).json()['automations'])
+                background_url = panel_url + '/api/background'
+                background = browser.get(background_url, timeout=3).json()
+                remove_summary = dict(action='delete', name='summary', version=background['version'])
+                assert browser.post(background_url, json=remove_summary, timeout=3).status_code == 403
+                result = browser.post(background_url, headers=csrf, json=remove_summary, timeout=3)
+                result.raise_for_status()
+                assert result.json()['deleted'] == ['summary'] and not result.json()['enabled']['summary']
+                uploaded = browser.post(panel_url + '/api/knowledge', headers=csrf,
+                                        files={'file': ('smoke.markdown', 'Проверка файла: аметист'.encode())}, timeout=5)
+                uploaded.raise_for_status()
+                matches = browser.post(panel_url + '/api/knowledge/search', headers=csrf, json={'query':'аметист'}, timeout=5)
+                assert matches.json()['results'][0]['document_id'] == uploaded.json()['document']['id']
+                if sys.platform == 'darwin':
+                    rtf = br'{\rtf1\ansi A formatted document with a turquoise marker.}'
+                    uploaded = browser.post(panel_url + '/api/knowledge', headers=csrf,
+                                            files={'file': ('Formatted.RTF', rtf)}, timeout=10)
+                    uploaded.raise_for_status()
+                    document_id = uploaded.json()['document']['id']
+                    documents = browser.get(panel_url + '/api/knowledge', timeout=3).json()['documents']
+                    assert any(doc['id'] == document_id and doc['title'] == 'Formatted.RTF' for doc in documents)
+                    matches = browser.post(panel_url + '/api/knowledge/search', headers=csrf, json={'query':'turquoise'}, timeout=5)
+                    assert matches.json()['results'][0]['document_id'] == document_id
                 logs = browser.get(panel_url + '/api/logs?name=supervisor.log', timeout=3)
                 assert logs.ok and logs.json()['name'] == 'supervisor.log'
                 before_restart = status()['supervisor']['server']['pid']
                 assert browser.post(panel_url + '/api/server', json={'action': 'restart'}, headers=csrf, timeout=20).ok
                 wait_for(lambda: status()['worker_active'] and status()['supervisor']['server']['pid'] != before_restart)
+                assert browser.get(background_url, timeout=3).json()['deleted'] == ['summary']
+                assert browser.get(panel_url + '/api/models', timeout=3).json()['availability'][0]['credential_configured']
                 missing = browser.get(panel_url + '/task_status/missing', timeout=3)
                 assert missing.status_code == 404 and missing.json()['success'] is False
                 assert browser.post(panel_url + '/api/logout', json={}, headers=csrf, timeout=3).ok

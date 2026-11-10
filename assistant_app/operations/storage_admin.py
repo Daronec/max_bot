@@ -15,6 +15,7 @@ from assistant_app.core.task_service import record_lifecycle
 
 from assistant_app.core.task_store import SQLiteTaskStore
 from assistant_app.paths import PROJECT_ROOT
+from assistant_app.services.background_services import BackgroundSettings, SERVICE_NAMES
 
 
 def restore(directory, snapshot):
@@ -42,6 +43,7 @@ def restore(directory, snapshot):
         store = SQLiteTaskStore(directory)
         with store.connect() as current:
             deletions = current.execute("SELECT key,value FROM metadata WHERE key LIKE 'deleted_document:%'").fetchall()
+        deleted_services = set(BackgroundSettings(store).get()['deleted'])
         stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
         recovery = directory / ('before-restore-' + stamp + '.sqlite3')
         store.backup(recovery)
@@ -93,7 +95,12 @@ def restore(directory, snapshot):
                         staged.execute("UPDATE channel_links SET state='revoked',conversation=NULL")
                     if 'pairing_codes' in tables:
                         staged.execute('DELETE FROM pairing_codes')
-                    staged.execute('INSERT OR REPLACE INTO metadata VALUES(?,?)', ('background_settings', json.dumps(dict(version=0, enabled=dict(summary=False,mood=False,notifications=False)))))
+                    previous = staged.execute("SELECT value FROM metadata WHERE key='background_settings'").fetchone()
+                    if previous:
+                        deleted_services.update(json.loads(previous[0]).get('deleted', []))
+                    background = dict(version=0, enabled=dict.fromkeys(SERVICE_NAMES, False),
+                                      deleted=sorted(deleted_services))
+                    staged.execute('INSERT OR REPLACE INTO metadata VALUES(?,?)', ('background_settings', json.dumps(background)))
                     # Legacy exports are never authoritative after an explicit restore.
                     staged.execute('INSERT OR REPLACE INTO metadata VALUES(?,?)', ('json_migration_v1',
                         json.dumps(dict(imported=0, existing=len(rows), rejected=[], backup=str(recovery), restored=True))))

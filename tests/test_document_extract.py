@@ -1,6 +1,9 @@
+import bot_test_support
+from io import BytesIO
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 from assistant_app.knowledge.extract import extract
 
 
@@ -23,6 +26,15 @@ class PDFExtractTests(unittest.TestCase):
         writer.write(self.path)
         text=extract(self.path)
         self.assertIn('[Страница 1]',text);self.assertIn('Knowledge marker',text)
+        from assistant_app.core import server
+        with patch.object(server, 'TASKS_DIR', str(self.path.parent/'tasks')), patch.object(server, 'active_tasks', {}):
+            client=server.app.test_client()
+            response=client.post('/api/knowledge', data={'file':(BytesIO(self.path.read_bytes()), 'Manual.PDF')})
+            self.assertEqual(response.status_code, 200)
+            source=client.post('/api/knowledge/search', json={'query':'Knowledge marker'}).json['results'][0]
+            self.assertEqual(source['title'], 'Manual.PDF')
+            self.assertIn('[Страница 1]', client.get(source['url']).json['document']['chunks'][0]['content'])
+            self.assertEqual(client.post('/api/knowledge',data={'file':(BytesIO(b'fixture'), 'wrong.docx')}).status_code,400)
 
     def test_scans_and_encryption_report_explicit_error(self):
         writer=self.pypdf.PdfWriter();writer.add_blank_page(width=600,height=800);writer.write(self.path)

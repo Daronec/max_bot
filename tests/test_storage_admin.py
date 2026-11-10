@@ -6,6 +6,7 @@ import unittest
 from assistant_app.knowledge.index import KnowledgeStore
 from assistant_app.operations.storage_admin import restore
 from assistant_app.core.task_store import SQLiteTaskStore
+from assistant_app.services.background_services import BackgroundSettings
 
 
 class StorageRecoveryTests(unittest.TestCase):
@@ -17,15 +18,19 @@ class StorageRecoveryTests(unittest.TestCase):
             document = knowledge.ingest('owner', 'notes.txt', 'Удаляемая личная запись')
             store.save(dict(task_id='queued', message='external action', status='queued', source='max', result=None))
             store.save(dict(task_id='delivery', message='message', status='completed', result='answer', delivered=False))
+            background = BackgroundSettings(store)
+            background.delete('notifications', 0)
             snapshot = root / 'snapshot.sqlite3'
             store.backup(snapshot)
             knowledge.delete('owner', document['id'])
+            background.delete('summary', 1)
             recovery = restore(root, snapshot)
             self.assertTrue(recovery.is_file())
             restored = SQLiteTaskStore(root)
             self.assertEqual(restored.get('queued')['status'], 'failed')
             self.assertTrue(restored.get('delivery')['delivery_uncertain'])
             self.assertEqual(KnowledgeStore(restored).list('owner'), [])
+            self.assertEqual(BackgroundSettings(restored).get()['deleted'], ['notifications', 'summary'])
             self.assertTrue(restored.migrate_json()['restored'])
 
     def test_restore_rejects_active_api(self):

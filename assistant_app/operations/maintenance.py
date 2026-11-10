@@ -2,6 +2,7 @@
 from datetime import datetime
 import json
 import logging
+import re
 import time
 from zoneinfo import ZoneInfo
 
@@ -15,11 +16,46 @@ LOGGER = logging.getLogger(__name__)
 STATE = 'daily_maintenance'
 OFFLINE = ('нет соединения с сервером модели', 'нет сервера lm studio',
            'локальный сервер модели ещё недоступен', 'не найден lms для автозапуска')
-REFUSALS = ('не могу выполнить', 'не удалось выполнить', 'не смог выполнить',
-            'не смогла выполнить', 'выполнить не удалось')
+REFUSALS = re.compile(
+    r'не (?:могу|смогу|смог(?:ла)?|удалось) (?:выполнить|добавить|создать|найти|отправить|'
+    r'получить|предоставить|сообщить|показать|сохранить|посмотреть|ответить)|'
+    r'нет доступа|не имею доступа|выполнить не удалось|выполнение этого действия невозможно|'
+    r'операция (?:с приложением )?не (?:подтверждена|выполнена)|подготовка не завершена|'
+    r'команда не завершилась успешно|не нашла явных личных фактов|не нашла полную дату|'
+    r'не найден файл|can.t check', re.I,
+)
+TOOL_MARKUP = re.compile(r'<tool_call>|<｜｜DSML｜｜\s*(?:calls|invoke)>', re.I)
+ACTION_REQUEST = re.compile(r'^\s*(?:агафья[,! ]+)?(?:создай|добавь|запиши|поставь)\b.{0,60}'
+                            r'\b(?:напоминани\w*|событи\w*|контакт\w*)', re.I)
+ACTION_CLAIM = re.compile(r'\b(?:создан[оа]?|создал[аи]?|добавлен[оа]?|добавил[аи]?)\b', re.I)
+ACTION_RECEIPT = re.compile(r'\bID:\s*(?:x-apple-[\w-]+://|[0-9a-f]{8}-[0-9a-f-]{27})', re.I)
 
 
-def findings(store, now):
+def review_reason(task):
+    if task.get('delivery_uncertain'):
+        return 'delivery_uncertain'
+    if task['status'] != 'completed':
+        return 'task_error' if task.get('error') or task['status'] == 'failed' else None
+    answer = str(task.get('result') or '')
+    if TOOL_MARKUP.search(answer):
+        return 'tool_markup'
+    if REFUSALS.search(answer):
+        return 'request_unfulfilled'
+    actions = task.get('command_actions') or []
+    latest_effects = {event.get('name'):event.get('status') for event in task.get('tool_executions', [])
+                      if event.get('effect') in ('write', 'process')}
+    if any(action.get('timed_out') or action.get('exit_code') not in (None, 0) for action in actions):
+        return 'command_error'
+    if 'failed' in latest_effects.values():
+        return 'tool_error'
+    if (ACTION_REQUEST.search(str(task.get('message') or '')) and ACTION_CLAIM.search(answer)
+            and not ACTION_RECEIPT.search(answer)
+            and not any(latest_effects.get(tool)=='completed' for tool in ('create_contact','create_reminder'))):
+        return 'unverified_action'
+    return None
+
+
+def findings(store, now, *, window=86400):
     """The dialogue is only evidence. It cannot supply commands, URLs or policy."""
     found = []
     with store.connect() as db:
@@ -29,17 +65,16 @@ def findings(store, now):
                 json_extract(payload,'$.events[#-1].timestamp'),json_extract(payload,'$.timestamp')))
                 BETWEEN julianday(?, 'unixepoch') AND julianday(?, 'unixepoch')
             ORDER BY rowid DESC
-        """, (now-86400, now))
+        """, (now-window, now))
         for row in rows:
             task = json.loads(row[0])
             completed = task['status'] == 'completed'
             error = str(task.get('last_processing_error') or task.get('error') or '').casefold()
-            answer = str(task.get('result') or '').casefold()[:1600]
             target = (task.get('routing') or {}).get('target')
             if not completed and target in (None, 'qwen', 'local') and any(pattern in error for pattern in OFFLINE):
                 found.append(dict(task_id=task['task_id'], kind='local_model_offline'))
-            elif task.get('delivery_uncertain') or (not completed and (error or task['status']=='failed')) or any(pattern in answer for pattern in REFUSALS):
-                found.append(dict(task_id=task['task_id'], kind='review'))
+            elif reason := review_reason(task):
+                found.append(dict(task_id=task['task_id'], kind='review', reason=reason))
     return found
 
 

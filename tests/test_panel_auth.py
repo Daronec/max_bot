@@ -43,6 +43,25 @@ class PanelAuthenticationTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/logout', json={}, headers={'X-CSRF-Token':csrf}).status_code, 200)
         self.assertEqual(self.client.get('/api/session').status_code, 401)
 
+    def test_permissions_show_pending_and_approved_without_requesting_access(self):
+        links = [{'state': 'pending', 'channel': 'telegram'}, {'state': 'active', 'channel': 'max'}]
+        with patch('sys.platform', 'darwin'), \
+                patch('assistant_app.tools.contacts_bridge.invoke', return_value={'authorization': 0}) as check, \
+                patch.object(server, 'identity_service') as identity_service:
+            identity_service.return_value.links.return_value = links
+            self.assertEqual(self.client.get('/api/permissions').status_code, 401)
+            check.assert_not_called()
+            self.login()
+            response = self.client.get('/api/permissions')
+            self.assertEqual(response.status_code, 200)
+            data = response.get_json()
+            self.assertEqual(data['links'], links)
+            self.assertEqual(set(data['tools']), {'files', 'commands', 'web'})
+            self.assertEqual(data['macos']['contacts'], 'pending')
+            check.assert_called_once_with(['--check'], timeout=5, blocking=False)
+            check.return_value = {'authorization': 3}
+            self.assertEqual(self.client.get('/api/permissions').get_json()['macos']['contacts'], 'approved')
+
     def test_bearer_and_host_validation(self):
         headers = {'Authorization': 'Bearer ' + self.auth.token}
         response = self.client.get('/api/session', headers=headers)
